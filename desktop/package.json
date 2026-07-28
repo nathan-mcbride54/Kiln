@@ -1,0 +1,27 @@
+{
+  "name": "kiln-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.1",
+    "svelte": "^5.39.4"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.2.0",
+    "@tauri-apps/cli": "^2.9.1",
+    "@tsconfig/svelte": "^5.0.5",
+    "svelte-check": "^4.3.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.13"
+  }
+}
