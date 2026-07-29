@@ -1,0 +1,85 @@
+name: Kiln quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kiln-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-linux:
+    name: Quality (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-22.04
+
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@v7
+
+      - name: Install Linux desktop prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes \
+            build-essential \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install product-preview dependencies
+        run: npm ci
+
+      - name: Install desktop dependencies
+        run: npm ci --prefix desktop
+
+      - name: Verify generated contracts, preview, and platform fixtures
+        run: npm test
+
+      - name: Lint the product source
+        run: npm run lint
+
+      - name: Check the Svelte desktop
+        run: npm run check --prefix desktop
+
+      - name: Build the Svelte desktop
+        run: npm run build --prefix desktop
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust without warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test the complete Rust workspace
+        run: cargo test --workspace --all-targets --locked

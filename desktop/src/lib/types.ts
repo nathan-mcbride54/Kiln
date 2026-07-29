@@ -78,9 +78,117 @@ export interface ChatResponse {
   };
 }
 
+export type ChatStreamEvent =
+  | { type: "message_delta"; data: { delta: string } }
+  | { type: "message_completed"; data: { response: ChatResponse } }
+  | { type: "cancelled"; data: { reason: string } };
+
 export interface CommandError {
   code?: string;
   provider?: ProviderId;
   message?: string;
   retryable?: boolean;
+}
+
+export interface ProjectDefaults {
+  provider?: ProviderId;
+  model?: string;
+  verificationProfile?: string;
+}
+
+export interface RepositoryStatus {
+  staged: number;
+  modified: number;
+  untracked: number;
+  conflicts: number;
+  ahead: number;
+  behind: number;
+}
+
+export interface ProjectSnapshot {
+  projectId: string;
+  displayName: string;
+  root: string;
+  branch?: string;
+  head?: string;
+  status: RepositoryStatus;
+  defaults: ProjectDefaults;
+}
+
+export interface RememberedProject {
+  project: ProjectSnapshot;
+  lastOpenedAtMs: number;
+  available: boolean;
+  unavailableReason?: string;
+}
+
+export type RepositoryToolRequest =
+  | {
+      tool: "read_file";
+      input: {
+        path: string;
+        startLine?: number;
+        lineCount?: number;
+      };
+    }
+  | {
+      tool: "search_files";
+      input: {
+        pattern: string;
+        maxResults?: number;
+      };
+    }
+  | {
+      tool: "search_text";
+      input: {
+        query: string;
+        path?: string;
+        caseSensitive?: boolean;
+        maxResults?: number;
+      };
+    };
+
+export interface FileMatch {
+  path: string;
+}
+
+export interface TextMatch {
+  path: string;
+  line: number;
+  column: number;
+  preview: string;
+}
+
+export type RepositoryToolResult =
+  | {
+      tool: "read_file";
+      result: {
+        path: string;
+        content: string;
+        startLine: number;
+        endLine: number;
+        truncated: boolean;
+      };
+    }
+  | {
+      tool: "search_files";
+      result: {
+        pattern: string;
+        matches: FileMatch[];
+        truncated: boolean;
+      };
+    }
+  | {
+      tool: "search_text";
+      result: {
+        query: string;
+        matches: TextMatch[];
+        filesSearched: number;
+        truncated: boolean;
+      };
+    };
+
+export interface RepositoryToolExecution {
+  result: RepositoryToolResult;
+  activitySummary: string;
 }

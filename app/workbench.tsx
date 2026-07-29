@@ -9,6 +9,11 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  roadmap,
+  roadmapLastReviewed,
+  roadmapRevision,
+} from "./roadmap.generated";
 
 type ProviderId = "openai" | "anthropic" | "local";
 type ViewId = "workbench" | "providers" | "roadmap";
@@ -115,117 +120,6 @@ const initialMessages: Message[] = [
     role: "assistant",
     label: "Plan accepted · 4 steps",
     body: "I’ll introduce a typed command registry, add fuzzy ranking behind the application boundary, wire the palette to project and task actions, then verify keyboard and screen-reader behavior.",
-  },
-];
-
-const roadmap = [
-  {
-    id: "H0",
-    title: "Product foundation",
-    status: "In progress",
-    progress: 58,
-    outcome: "A coherent product shell with stable provider and event contracts.",
-    now: [
-      "Svelte + Tauri desktop shell",
-      "Rust provider abstraction",
-      "Structured evolving roadmap",
-    ],
-    gates: [
-      "UI has no provider-specific logic",
-      "Recorded sessions replay deterministically",
-      "Windows and Linux builds stay green",
-    ],
-  },
-  {
-    id: "H1",
-    title: "Connected vertical slice",
-    status: "Next",
-    progress: 14,
-    outcome:
-      "Complete one real repository task through every required provider type.",
-    now: [
-      "OpenAI Responses adapter",
-      "Anthropic Messages adapter",
-      "OpenAI-compatible local adapter",
-    ],
-    gates: [
-      "Ordered streaming and cancellation",
-      "Denied tools never execute",
-      "Credentials never enter logs or history",
-    ],
-  },
-  {
-    id: "H2",
-    title: "Reliable task workspace",
-    status: "Planned",
-    progress: 0,
-    outcome: "Daily, concurrent coding work that survives restarts.",
-    now: [
-      "Per-task worktrees",
-      "Checkpoints and resume",
-      "Terminal and verification profiles",
-    ],
-    gates: [
-      "Two tasks stay isolated",
-      "Restart produces truthful state",
-      "Revert preserves unrelated user work",
-    ],
-  },
-  {
-    id: "H3",
-    title: "Open agent ecosystem",
-    status: "Planned",
-    progress: 0,
-    outcome: "Orchestrate agents and tools through open protocols.",
-    now: ["ACP client", "MCP tools", "Goose + OpenCode profiles"],
-    gates: [
-      "Capability-driven degradation",
-      "Central approval enforcement",
-      "Adapters recover independently",
-    ],
-  },
-  {
-    id: "H4",
-    title: "Windows + Linux beta",
-    status: "Planned",
-    progress: 0,
-    outcome: "A polished, installable daily driver.",
-    now: [
-      "Signed installers",
-      "Accessible keyboard flows",
-      "Diagnostics with redaction preview",
-    ],
-    gates: [
-      "10,000-event sessions remain responsive",
-      "No leaked child processes",
-      "Upgrade and rollback preserve state",
-    ],
-  },
-  {
-    id: "H5",
-    title: "Secure autonomy",
-    status: "Deferred",
-    progress: 0,
-    outcome: "Long-running tasks with isolation and remote supervision.",
-    now: ["Process sandboxing", "Network policy", "Headless daemon"],
-    gates: [
-      "Resource limits are enforced",
-      "Remote pairing is revocable",
-      "Disconnects never corrupt tasks",
-    ],
-  },
-  {
-    id: "H6",
-    title: "macOS release",
-    status: "Later",
-    progress: 0,
-    outcome: "Feature parity on a signed and notarized desktop build.",
-    now: ["Apple Silicon validation", "Keychain", "Notarized updater"],
-    gates: [
-      "Core suites pass on physical hardware",
-      "Packages are signed and notarized",
-      "Platform differences are documented",
-    ],
   },
 ];
 
@@ -1007,7 +901,9 @@ export function KilnWorkbench() {
         <section className="content-view roadmap-view" id="main-content">
           <header className="content-header roadmap-hero">
             <div>
-              <span className="content-kicker">Living roadmap · revision 0.1</span>
+              <span className="content-kicker">
+                Living roadmap · revision {roadmapRevision}
+              </span>
               <h1>Earn autonomy one reliable layer at a time.</h1>
               <p>
                 Every milestone is defined by a user outcome and acceptance
@@ -1017,7 +913,9 @@ export function KilnWorkbench() {
             <div className="launch-target">
               <span>Launch target</span>
               <strong>Windows + Linux</strong>
-              <small>macOS follows release-gate parity</small>
+              <small>
+                Reviewed {roadmapLastReviewed} · macOS follows release-gate parity
+              </small>
             </div>
           </header>
 

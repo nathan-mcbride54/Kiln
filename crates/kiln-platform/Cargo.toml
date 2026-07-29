@@ -1,0 +1,11 @@
+[package]
+name = "kiln-platform"
+description = "Operating-system boundaries for Kiln"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+tokio-util.workspace = true

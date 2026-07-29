@@ -1,16 +1,13 @@
+use kiln_core::{
+    ChatRequest, ChatResponse, ChatRole, ProviderCapabilities, ProviderCredentials, ProviderKind,
+    ProviderProtocol, TokenUsage,
+};
 use reqwest::{header::AUTHORIZATION, RequestBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{to_value, Value};
 
-use crate::{
-    error::ProviderError,
-    types::{
-        ChatRequest, ChatResponse, ChatRole, ProviderCapabilities, ProviderCredentials,
-        ProviderKind, ProviderProtocol, TokenUsage,
-    },
-};
-
-use super::{bearer_header, ProviderAdapter};
+use super::{bearer_header, ProviderAdapter, StreamState};
+use crate::error::ProviderError;
 
 pub(crate) struct LocalAdapter;
 
@@ -29,7 +26,7 @@ impl ProviderAdapter for LocalAdapter {
             custom_base_url: true,
             custom_headers: true,
             model_discovery: true,
-            streaming: false,
+            streaming: true,
             system_messages: true,
             temperature: true,
         }
@@ -46,7 +43,7 @@ impl ProviderAdapter for LocalAdapter {
     ) -> Result<RequestBuilder, ProviderError> {
         match credentials.api_key.as_ref() {
             Some(key) if !key.is_blank() => {
-                Ok(request.header(AUTHORIZATION, bearer_header(key.expose())?))
+                Ok(request.header(AUTHORIZATION, bearer_header(key.expose_secret())?))
             }
             _ => Ok(request),
         }
@@ -85,6 +82,57 @@ impl ProviderAdapter for LocalAdapter {
         requested_model: &str,
     ) -> Result<ChatResponse, ProviderError> {
         parse_response(body, requested_model)
+    }
+
+    fn parse_stream_data(
+        &self,
+        data: &str,
+        state: &mut StreamState,
+    ) -> Result<Vec<kiln_core::ChatStreamEvent>, ProviderError> {
+        if data == "[DONE]" {
+            return Ok(state.complete()?.into_iter().collect());
+        }
+        let value: Value = serde_json::from_str(data).map_err(|error| {
+            ProviderError::MalformedResponse(format!(
+                "The local server returned a stream event Kiln could not parse: {error}"
+            ))
+        })?;
+        state.id = state
+            .id
+            .take()
+            .or_else(|| value.get("id").and_then(Value::as_str).map(str::to_owned));
+        state.model = state.model.take().or_else(|| {
+            value
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        });
+        if let Some(usage) = value.get("usage") {
+            state.usage.input_tokens = usage.get("prompt_tokens").and_then(Value::as_u64);
+            state.usage.output_tokens = usage.get("completion_tokens").and_then(Value::as_u64);
+            state.usage.total_tokens = usage.get("total_tokens").and_then(Value::as_u64);
+        }
+
+        let choice = value
+            .get("choices")
+            .and_then(Value::as_array)
+            .and_then(|choices| choices.first());
+        let delta = choice
+            .and_then(|choice| choice.pointer("/delta/content"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        state.finish_reason = choice
+            .and_then(|choice| choice.get("finish_reason"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| state.finish_reason.clone());
+
+        let mut events = state.delta(delta).into_iter().collect::<Vec<_>>();
+        if state.finish_reason.is_some() {
+            events.extend(state.complete()?);
+        }
+        Ok(events)
     }
 }
 
@@ -139,7 +187,7 @@ impl CompatibleContent {
             Self::Text(text) => text,
             Self::Blocks(blocks) => blocks
                 .into_iter()
-                .filter(|block| block.kind.as_deref().is_none_or(|kind| kind == "text"))
+                .filter(|block| block.kind.as_deref().map_or(true, |kind| kind == "text"))
                 .filter_map(|block| block.text)
                 .collect(),
         }
@@ -239,5 +287,38 @@ mod tests {
         let response = parse_response(fixture, "local-model").expect("fixture should parse");
         assert_eq!(response.content, "block content");
         assert_eq!(response.model, "local-model");
+    }
+
+    #[test]
+    fn normalizes_compatible_stream_events() {
+        let adapter = LocalAdapter;
+        let mut state = StreamState::new(ProviderKind::Local, "fallback".to_owned());
+        let first = adapter
+            .parse_stream_data(
+                r#"{"id":"chat_stream","model":"qwen","choices":[{"delta":{"content":"Hello "},"finish_reason":null}]}"#,
+                &mut state,
+            )
+            .unwrap();
+        let second = adapter
+            .parse_stream_data(
+                r#"{"id":"chat_stream","model":"qwen","choices":[{"delta":{"content":"locally"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}"#,
+                &mut state,
+            )
+            .unwrap();
+
+        assert!(matches!(
+            first.as_slice(),
+            [kiln_core::ChatStreamEvent::MessageDelta { delta }]
+                if delta == "Hello "
+        ));
+        assert!(matches!(
+            second.as_slice(),
+            [
+                kiln_core::ChatStreamEvent::MessageDelta { delta },
+                kiln_core::ChatStreamEvent::MessageCompleted { response }
+            ] if delta == "locally"
+                && response.content == "Hello locally"
+                && response.usage.total_tokens == Some(7)
+        ));
     }
 }

@@ -30,11 +30,15 @@ impl SecretString {
         Self(value.into())
     }
 
-    pub(crate) fn expose(&self) -> &str {
+    /// Exposes the wrapped value at a trusted transport boundary.
+    ///
+    /// Callers should keep the returned value ephemeral and must never place
+    /// it in logs, events, diagnostics, or durable state.
+    pub fn expose_secret(&self) -> &str {
         &self.0
     }
 
-    pub(crate) fn is_blank(&self) -> bool {
+    pub fn is_blank(&self) -> bool {
         self.0.trim().is_empty()
     }
 }
@@ -149,7 +153,7 @@ pub struct ConnectionTestResponse {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsage {
     pub input_tokens: Option<u64>,
@@ -157,7 +161,7 @@ pub struct TokenUsage {
     pub total_tokens: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatResponse {
     pub provider: ProviderKind,
@@ -166,6 +170,19 @@ pub struct ChatResponse {
     pub content: String,
     pub finish_reason: Option<String>,
     pub usage: TokenUsage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    content = "data",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum ChatStreamEvent {
+    MessageDelta { delta: String },
+    MessageCompleted { response: ChatResponse },
+    Cancelled { reason: String },
 }
 
 #[cfg(test)]

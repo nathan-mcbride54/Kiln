@@ -1,21 +1,44 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
+    cancelTurn,
+    executeVisibleRepositoryTool,
+    executeTurnStreaming,
     isDesktopRuntime,
+    listRememberedProjects,
     listProviderCapabilities,
-    sendChat,
+    loadApplicationEvents,
+    openRepository,
+    persistApplicationEvents,
     testProviderConnection,
   } from "./lib/bridge";
+  import {
+    type ApplicationEvent,
+    type EventEnvelope,
+    type EventMetadata,
+  } from "./lib/events.ts";
+  import { DurableTaskHistory } from "./lib/history.ts";
+  import { initialSessionEvents } from "./lib/preview-session.ts";
+  import { projectInspector } from "./lib/projector.ts";
+  import {
+    roadmap,
+    roadmapLastReviewed,
+    roadmapRevision,
+  } from "./lib/roadmap.generated";
   import type {
     ChatMessage,
+    ProjectDefaults,
+    ProjectSnapshot,
     ProviderCapabilities,
     ProviderConfig,
     ProviderId,
+    RememberedProject,
   } from "./lib/types";
 
   type View = "workbench" | "connections" | "roadmap";
   type InspectorTab = "changes" | "activity";
   type TaskState = "working" | "review" | "queued" | "done";
+  const taskStreamId = "task:recorded-replay";
 
   interface Task {
     id: string;
@@ -28,32 +51,15 @@
     updated: string;
   }
 
-  interface UiMessage extends ChatMessage {
-    id: string;
-    label: string;
-    time: string;
-    model?: string;
-    note?: string;
-  }
-
-  interface RoadmapPhase {
-    id: string;
-    title: string;
-    horizon: string;
-    status: "now" | "next" | "later";
-    summary: string;
-    outcomes: string[];
-  }
-
   const tasks: Task[] = [
     {
-      id: "provider-router",
-      title: "Build the provider router",
+      id: "recorded-replay",
+      title: "Polish the provider status card",
       workspace: "kiln",
-      branch: "feat/provider-router",
-      state: "working",
-      additions: 284,
-      deletions: 31,
+      branch: "feat/provider-status",
+      state: "review",
+      additions: 18,
+      deletions: 6,
       updated: "now",
     },
     {
@@ -130,161 +136,82 @@
     },
   ];
 
-  const initialMessages: UiMessage[] = [
-    {
-      id: "m1",
-      role: "user",
-      label: "You",
-      time: "14:06",
-      content:
-        "Create the provider boundary first. Keep credentials ephemeral, support native OpenAI and Anthropic APIs, and let me point the local adapter at any compatible server.",
-    },
-    {
-      id: "m2",
-      role: "assistant",
-      label: "Kiln",
-      time: "14:07",
-      model: "gpt-5.6-terra",
-      note: "Planned 4 steps · inspected 9 files",
-      content:
-        "I found a clean seam between the workbench and the runtime. I’m implementing one typed request shape with three protocol adapters, then exposing only three desktop commands: discover capabilities, test a connection, and send a chat request.\n\nCredentials stay inside the current request and are redacted from Rust diagnostics. The local adapter accepts a custom base URL; cloud providers remain pinned to their official origins.",
-    },
-    {
-      id: "m3",
-      role: "assistant",
-      label: "Kiln",
-      time: "14:09",
-      model: "activity",
-      note: "Awaiting review",
-      content:
-        "Provider boundary is in place. OpenAI uses Responses, Anthropic uses Messages, and local servers use Chat Completions. I also added structured errors so the interface can distinguish authentication, rate limits, timeouts, and unreachable local servers.",
-    },
-  ];
-
-  const roadmap: RoadmapPhase[] = [
-    {
-      id: "H0",
-      title: "Beautiful walking skeleton",
-      horizon: "Weeks 0–2",
-      status: "now",
-      summary: "A dependable desktop loop with real provider calls and visible agency.",
-      outcomes: [
-        "Windows and Linux development builds",
-        "OpenAI, Anthropic, and local adapters",
-        "Conversation, activity, and diff surfaces",
-      ],
-    },
-    {
-      id: "H1",
-      title: "Safe local execution",
-      horizon: "Weeks 2–5",
-      status: "next",
-      summary: "Workspace-aware tools with explicit trust and approval boundaries.",
-      outcomes: [
-        "Filesystem and command tools",
-        "Ask, allow once, and session policies",
-        "Cancellation and durable run history",
-      ],
-    },
-    {
-      id: "H2",
-      title: "Agent interoperability",
-      horizon: "Weeks 5–8",
-      status: "next",
-      summary: "Treat external agents and tool ecosystems as first-class citizens.",
-      outcomes: [
-        "ACP client bridge",
-        "MCP server management",
-        "Portable session transcripts",
-      ],
-    },
-    {
-      id: "H3",
-      title: "Parallel work",
-      horizon: "Weeks 8–12",
-      status: "later",
-      summary: "Run focused agents in isolated worktrees without losing the plot.",
-      outcomes: [
-        "Task graph and subagents",
-        "Git worktree isolation",
-        "Unified review and merge flow",
-      ],
-    },
-    {
-      id: "H4",
-      title: "Platform hardening",
-      horizon: "After v1",
-      status: "later",
-      summary: "Polished installers, updates, accessibility, and macOS readiness.",
-      outcomes: [
-        "Signed Windows and Linux releases",
-        "Crash recovery and diagnostics",
-        "macOS packaging and notarization",
-      ],
-    },
-  ];
-
   const files = [
-    { path: "src/providers/openai.rs", additions: 86, deletions: 3 },
-    { path: "src/providers/anthropic.rs", additions: 79, deletions: 5 },
-    { path: "src/providers/local.rs", additions: 71, deletions: 8 },
-    { path: "src/commands.rs", additions: 48, deletions: 15 },
+    { path: "desktop/src/App.svelte", additions: 18, deletions: 6 },
   ];
 
-  const activity = [
-    {
-      icon: "↳",
-      title: "Read provider contracts",
-      detail: "9 files · 1,842 lines",
-      time: "14:07",
-      tone: "quiet",
-    },
-    {
-      icon: "✓",
-      title: "Added typed provider boundary",
-      detail: "Three adapters · one command surface",
-      time: "14:08",
-      tone: "good",
-    },
-    {
-      icon: "⌁",
-      title: "Ran Rust checks",
-      detail: "18 tests passed · 0 warnings",
-      time: "14:09",
-      tone: "good",
-    },
-    {
-      icon: "◇",
-      title: "Ready for review",
-      detail: "284 additions · 31 deletions",
-      time: "now",
-      tone: "accent",
-    },
-  ];
-
+  const taskHistory = new DurableTaskHistory(
+    taskStreamId,
+    "recorded-replay",
+    isDesktopRuntime()
+    ? []
+      : initialSessionEvents,
+  );
+  let projection = taskHistory.projection;
   let activeView: View = "workbench";
   let activeTaskId = tasks[0].id;
   let activeProviderId: ProviderId = "openai";
   let inspectorTab: InspectorTab = "changes";
-  let messages: UiMessage[] = initialMessages;
   let draft = "";
-  let running = false;
   let capabilities: ProviderCapabilities[] = [];
   let toast = "";
   let mobileSidebarOpen = false;
+  let historyReady = !isDesktopRuntime();
+  let submitting = false;
+  let activeTurnId: string | undefined;
+  let rememberedProjects: RememberedProject[] = [];
+  let activeProject: ProjectSnapshot | undefined;
+  let projectDialogOpen = false;
+  let projectPath = "";
+  let projectError = "";
+  let openingProject = false;
+  let inspectingWorkspace = false;
 
+  $: messages = projection.messages;
+  $: activity = projection.activity;
+  $: inspector = projectInspector(projection);
+  $: running = projection.running;
   $: activeTask = tasks.find((task) => task.id === activeTaskId) ?? tasks[0];
   $: activeProvider =
     providers.find((provider) => provider.id === activeProviderId) ?? providers[0];
   $: connectedCount = providers.filter((provider) => provider.state === "ready").length;
 
   onMount(async () => {
+    const [providerResult, historyResult, projectsResult] = await Promise.allSettled([
+      listProviderCapabilities(),
+      isDesktopRuntime()
+        ? loadApplicationEvents(taskStreamId)
+        : Promise.resolve(initialSessionEvents),
+      listRememberedProjects(),
+    ]);
+
+    capabilities =
+      providerResult.status === "fulfilled" ? providerResult.value : [];
+
     try {
-      capabilities = await listProviderCapabilities();
+      if (historyResult.status === "fulfilled") {
+        replaceApplicationEvents(historyResult.value);
+      } else {
+        throw historyResult.reason;
+      }
     } catch {
-      capabilities = [];
+      toast = "Kiln couldn’t restore local task history.";
+      window.setTimeout(() => (toast = ""), 4200);
     }
+    if (projectsResult.status === "fulfilled") {
+      rememberedProjects = projectsResult.value;
+      const firstAvailable = rememberedProjects.find((project) => project.available);
+      if (firstAvailable) selectProject(firstAvailable.project);
+    } else {
+      toast = "Kiln couldn’t refresh remembered repositories.";
+      window.setTimeout(() => (toast = ""), 4200);
+    }
+    historyReady = true;
   });
+
+  function replaceApplicationEvents(events: readonly EventEnvelope[]): void {
+    projection = taskHistory.restore(events);
+  }
 
   function patchProvider(
     id: ProviderId,
@@ -292,6 +219,102 @@
   ): void {
     providers = providers.map((provider) =>
       provider.id === id ? { ...provider, ...patch } : provider,
+    );
+  }
+
+  function selectProject(project: ProjectSnapshot): void {
+    activeProject = project;
+    const provider = project.defaults.provider;
+    if (provider && providers.some((candidate) => candidate.id === provider)) {
+      activeProviderId = provider;
+      if (project.defaults.model) {
+        patchProvider(provider, { model: project.defaults.model });
+      }
+    }
+  }
+
+  function showProjectDialog(project?: RememberedProject): void {
+    projectPath = project?.project.root ?? activeProject?.root ?? "";
+    projectError =
+      project && !project.available
+        ? project.unavailableReason ?? "This remembered repository is unavailable."
+        : "";
+    projectDialogOpen = true;
+  }
+
+  async function openSelectedProject(
+    defaults: ProjectDefaults = {
+      provider: activeProvider.id,
+      model: activeProvider.model,
+    },
+  ): Promise<void> {
+    const path = projectPath.trim();
+    if (!path || openingProject) {
+      projectError = "Enter the absolute path to a Git repository.";
+      return;
+    }
+    openingProject = true;
+    projectError = "";
+    try {
+      const project = await openRepository(path, defaults);
+      selectProject(project);
+      rememberedProjects = [
+        {
+          project,
+          lastOpenedAtMs: Date.now(),
+          available: true,
+        },
+        ...rememberedProjects.filter(
+          (candidate) => candidate.project.projectId !== project.projectId,
+        ),
+      ].slice(0, 12);
+      projectDialogOpen = false;
+      toast = `${project.displayName} is ready on ${project.branch ?? "detached HEAD"}`;
+      window.setTimeout(() => (toast = ""), 3600);
+    } catch (error) {
+      projectError =
+        error instanceof Error
+          ? error.message
+          : "Kiln could not open this repository.";
+    } finally {
+      openingProject = false;
+    }
+  }
+
+  async function openRememberedProject(
+    remembered: RememberedProject,
+  ): Promise<void> {
+    if (!remembered.available) {
+      showProjectDialog(remembered);
+      return;
+    }
+    projectPath = remembered.project.root;
+    await openSelectedProject(remembered.project.defaults);
+  }
+
+  function repositoryStatusLabel(project?: ProjectSnapshot): string {
+    if (!project) return "Choose a Git repository";
+    const count =
+      project.status.staged +
+      project.status.modified +
+      project.status.untracked +
+      project.status.conflicts;
+    if (project.status.conflicts) {
+      return `${project.status.conflicts} conflict${project.status.conflicts === 1 ? "" : "s"}`;
+    }
+    return count === 0
+      ? "Working tree clean"
+      : `${count} working-tree change${count === 1 ? "" : "s"}`;
+  }
+
+  async function appendApplicationEvents(
+    payloads: readonly ApplicationEvent[],
+    metadata: EventMetadata = {},
+  ): Promise<void> {
+    projection = await taskHistory.append(
+      payloads,
+      metadata,
+      persistApplicationEvents,
     );
   }
 
@@ -332,78 +355,118 @@
 
   async function submitPrompt(): Promise<void> {
     const content = draft.trim();
-    if (!content || running) return;
+    if (!activeProject) {
+      showProjectDialog();
+      return;
+    }
+    if (!content || running || submitting || !historyReady) return;
+    submitting = true;
 
-    const userMessage: UiMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      label: "You",
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      content,
-    };
-
-    const messagesBeforeSend = messages;
-    messages = [...messagesBeforeSend, userMessage];
-    draft = "";
-    running = true;
-
-    const requestMessages: ChatMessage[] = [...messagesBeforeSend, userMessage]
-      .filter((message) => message.model !== "activity")
-      .map(({ role, content: messageContent }) => ({
-        role,
-        content: messageContent,
-      }));
-
+    const messageId = crypto.randomUUID();
+    const turnId = crypto.randomUUID();
+    const assistantMessageId = crypto.randomUUID();
+    const commandId = `command:${turnId}`;
     try {
-      const response = await sendChat({
-        provider: activeProvider.id,
-        credentials: {
-          apiKey: activeProvider.apiKey || undefined,
-        },
-        baseUrl: activeProvider.baseUrl || undefined,
-        model: activeProvider.model,
-        messages: requestMessages,
-        maxOutputTokens: 4096,
-      });
+      try {
+        await appendApplicationEvents(
+          [
+            {
+              type: "message_added",
+              data: { messageId, role: "user", content },
+            },
+            {
+              type: "turn_started",
+              data: { turnId },
+            },
+          ],
+          { causationId: commandId, correlationId: turnId },
+        );
+      } catch {
+        toast = "Kiln couldn’t save this turn. Your draft is still here.";
+        window.setTimeout(() => (toast = ""), 4200);
+        return;
+      }
+      draft = "";
+      activeTurnId = turnId;
 
-      messages = [
-        ...messages,
-        {
-          id: response.id ?? crypto.randomUUID(),
-          role: "assistant",
-          label: "Kiln",
-          time: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          model: response.model,
-          note: response.usage.totalTokens
-            ? `${response.usage.totalTokens.toLocaleString()} tokens`
-            : "Completed",
-          content: response.content,
-        },
-      ];
-    } catch (error) {
-      messages = [
-        ...messages,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          label: "Kiln",
-          time: "now",
-          model: "connection error",
-          note: "Your draft is preserved above",
-          content:
-            error instanceof Error
-              ? error.message
-              : "The selected provider could not complete this request.",
-        },
-      ];
+      const requestMessages: ChatMessage[] = projection.messages
+        .map(({ role, content: messageContent }) => ({
+          role,
+          content: messageContent,
+        }));
+
+      try {
+        await executeTurnStreaming(
+          {
+            provider: activeProvider.id,
+            credentials: {
+              apiKey: activeProvider.apiKey || undefined,
+            },
+            baseUrl: activeProvider.baseUrl || undefined,
+            model: activeProvider.model,
+            messages: requestMessages,
+            maxOutputTokens: 4096,
+          },
+          { turnId, assistantMessageId },
+          async (events) => {
+            await appendApplicationEvents(events, {
+              causationId: commandId,
+              correlationId: turnId,
+            });
+          },
+        );
+      } catch {
+        toast =
+          "Kiln stopped the stream because its next event could not be saved.";
+        window.setTimeout(() => (toast = ""), 5200);
+      }
     } finally {
-      running = false;
+      activeTurnId = undefined;
+      submitting = false;
+    }
+  }
+
+  async function cancelActiveTurn(): Promise<void> {
+    if (!activeTurnId) return;
+    const accepted = await cancelTurn(activeTurnId);
+    toast = accepted ? "Stopping this turn…" : "This turn has already stopped.";
+    window.setTimeout(() => (toast = ""), 2400);
+  }
+
+  async function inspectWorkspace(): Promise<void> {
+    if (!activeProject || inspectingWorkspace) {
+      if (!activeProject) showProjectDialog();
+      return;
+    }
+    inspectingWorkspace = true;
+    inspectorTab = "activity";
+    const toolCallId = `tool:${crypto.randomUUID()}`;
+    try {
+      const result = await executeVisibleRepositoryTool(
+        activeProject.projectId,
+        toolCallId,
+        {
+          tool: "search_files",
+          input: { pattern: "*", maxResults: 100 },
+        },
+        async (events) => {
+          await appendApplicationEvents(events, {
+            causationId: toolCallId,
+            correlationId: toolCallId,
+          });
+        },
+      );
+      if (result.tool === "search_files") {
+        toast = `Inspected ${result.result.matches.length} workspace files`;
+      }
+    } catch (error) {
+      toast =
+        error instanceof Error
+          ? error.message
+          : "Kiln could not inspect this workspace.";
+    } finally {
+      inspectingWorkspace = false;
+      window.setTimeout(() => (toast = ""), 3600);
     }
   }
 
@@ -456,9 +519,9 @@
 
     <div class="titlebar-center" data-tauri-drag-region>
       <span class="workspace-dot"></span>
-      <span>kiln</span>
+      <span>{activeProject?.displayName ?? "No repository"}</span>
       <span class="slash">/</span>
-      <span>{activeTask.branch}</span>
+      <span>{activeProject?.branch ?? "detached HEAD"}</span>
     </div>
 
     <div class="window-actions">
@@ -477,6 +540,20 @@
         <span class="plus">+</span>
         <span>New task</span>
         <kbd>⌘N</kbd>
+      </button>
+
+      <button
+        class="project-switcher"
+        class:empty={!activeProject}
+        type="button"
+        onclick={() => showProjectDialog()}
+      >
+        <span class="project-icon">⌁</span>
+        <span>
+          <strong>{activeProject?.displayName ?? "Open repository"}</strong>
+          <small>{repositoryStatusLabel(activeProject)}</small>
+        </span>
+        <span class="chevron">⌄</span>
       </button>
 
       <nav class="primary-nav">
@@ -611,7 +688,11 @@
               </select>
               <span class="chevron">⌄</span>
             </label>
-            <button class="secondary-button" type="button">
+            <button
+              class="secondary-button"
+              type="button"
+              onclick={() => showProjectDialog()}
+            >
               <span>↗</span> Open workspace
             </button>
             <button class="more-button" type="button" aria-label="More task actions">•••</button>
@@ -624,9 +705,13 @@
               <div class="conversation-intro">
                 <div class="branch-pill">
                   <span>⌁</span>
-                  {activeTask.branch}
+                  {activeProject?.branch ?? "No repository"}
                 </div>
-                <span>Local workspace · started today at 14:06</span>
+                <span>
+                  {activeProject
+                    ? `Direct workspace · ${repositoryStatusLabel(activeProject)}`
+                    : "Open a Git repository before starting a task"}
+                </span>
               </div>
 
               {#each messages as message}
@@ -710,7 +795,11 @@
                   bind:value={draft}
                   onkeydown={handleComposerKeydown}
                   rows="3"
-                  placeholder="Ask Kiln to inspect, change, explain, or plan…"
+                  placeholder={historyReady
+                    ? activeProject
+                      ? "Ask Kiln to inspect, change, explain, or plan…"
+                      : "Open a Git repository to start a task…"
+                    : "Restoring local task history…"}
                   aria-label="Message Kiln"
                 ></textarea>
                 <div class="composer-footer">
@@ -726,9 +815,20 @@
                     <span><kbd>⌘</kbd><kbd>↵</kbd></span>
                     <button
                       class="send-button"
-                      type="submit"
-                      disabled={!draft.trim() || running}
-                      aria-label="Send message"
+                      type={running ? "button" : "submit"}
+                      disabled={running
+                        ? !activeTurnId
+                        : !draft.trim() ||
+                          submitting ||
+                          !historyReady ||
+                          !activeProject}
+                      aria-label={running ? "Stop turn" : "Send message"}
+                      onclick={(event) => {
+                        if (running) {
+                          event.preventDefault();
+                          void cancelActiveTurn();
+                        }
+                      }}
                     >
                       {running ? "■" : "↑"}
                     </button>
@@ -777,6 +877,17 @@
                 </div>
               </div>
 
+              {#if inspector.artifacts.length}
+                <div class="artifact-strip" aria-label="Recorded task artifacts">
+                  {#each inspector.artifacts as artifact}
+                    <div class={`artifact-chip ${artifact.kind}`}>
+                      <span>{artifact.kind.replaceAll("_", " ")}</span>
+                      <strong>{artifact.label}</strong>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+
               <div class="file-list">
                 {#each files as file, index}
                   <button type="button" class:active={index === 0}>
@@ -797,30 +908,30 @@
                 <div class="diff-head">
                   <div>
                     <span class="file-icon">R</span>
-                    <strong>openai.rs</strong>
+                    <strong>App.svelte</strong>
                   </div>
                   <span>•••</span>
                 </div>
                 <div class="diff-code" aria-label="Code change preview">
                   <div class="code-line context">
                     <span class="line-number">41</span>
-                    <code>async fn send(&amp;self, request: &amp;ChatRequest)</code>
+                    <code>&lt;div class="provider-card"&gt;</code>
                   </div>
                   <div class="code-line removed">
                     <span class="line-number">42</span>
-                    <code>- self.client.chat(request).await</code>
+                    <code>- &lt;span&gt;Connected&lt;/span&gt;</code>
                   </div>
                   <div class="code-line added">
                     <span class="line-number">42</span>
-                    <code>+ let body = ResponsesBody::from(request);</code>
+                    <code>+ &lt;strong&gt;Ready for this session&lt;/strong&gt;</code>
                   </div>
                   <div class="code-line added">
                     <span class="line-number">43</span>
-                    <code>+ self.post("/v1/responses", body).await</code>
+                    <code>+ &lt;small&gt;Connected · 42 ms&lt;/small&gt;</code>
                   </div>
                   <div class="code-line context">
                     <span class="line-number">44</span>
-                    <code>}</code>
+                    <code>&lt;/div&gt;</code>
                   </div>
                 </div>
               </div>
@@ -854,6 +965,14 @@
                 <div>
                   <strong>Visible agency</strong>
                   <p>Every tool call, approval, and file change lands here as an inspectable event.</p>
+                  <button
+                    class="secondary-button"
+                    type="button"
+                    disabled={inspectingWorkspace || !activeProject}
+                    onclick={() => void inspectWorkspace()}
+                  >
+                    {inspectingWorkspace ? "Inspecting…" : "Inspect workspace"}
+                  </button>
                 </div>
               </div>
             {/if}
@@ -1040,7 +1159,10 @@
       <section class="page roadmap-page">
         <header class="page-header roadmap-header">
           <div>
-            <div class="eyebrow">Living product roadmap · 2026-07-28</div>
+            <div class="eyebrow">
+              Living product roadmap · revision {roadmapRevision} ·
+              {roadmapLastReviewed}
+            </div>
             <h1>Earn trust before adding autonomy.</h1>
             <p>
               Kiln grows from a sharp local workbench into an interoperable agent
@@ -1135,6 +1257,104 @@
       </section>
     {/if}
   </main>
+
+  {#if projectDialogOpen}
+    <button
+      class="dialog-scrim"
+      type="button"
+      aria-label="Close repository picker"
+      onclick={() => !openingProject && (projectDialogOpen = false)}
+    ></button>
+    <div
+      class="project-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="project-dialog-title"
+    >
+      <header>
+        <div>
+          <span class="eyebrow">Direct workspace</span>
+          <h2 id="project-dialog-title">Open a Git repository</h2>
+        </div>
+        <button
+          class="dialog-close"
+          type="button"
+          aria-label="Close repository picker"
+          disabled={openingProject}
+          onclick={() => (projectDialogOpen = false)}
+        >×</button>
+      </header>
+
+      {#if rememberedProjects.length}
+        <div class="recent-projects">
+          <span class="dialog-label">Recent repositories</span>
+          {#each rememberedProjects as remembered}
+            <button
+              class:unavailable={!remembered.available}
+              class:active={remembered.project.projectId === activeProject?.projectId}
+              type="button"
+              disabled={openingProject}
+              onclick={() => void openRememberedProject(remembered)}
+            >
+              <span class="project-icon">⌁</span>
+              <span>
+                <strong>{remembered.project.displayName}</strong>
+                <small>
+                  {remembered.available
+                    ? `${remembered.project.branch ?? "detached HEAD"} · ${repositoryStatusLabel(remembered.project)}`
+                    : "Repository unavailable"}
+                </small>
+              </span>
+              <em>{remembered.available ? "Open" : "Locate"}</em>
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      <form
+        onsubmit={(event) => {
+          event.preventDefault();
+          void openSelectedProject();
+        }}
+      >
+        <label>
+          <span class="dialog-label">Absolute repository path</span>
+          <input
+            bind:value={projectPath}
+            type="text"
+            spellcheck="false"
+            placeholder={isDesktopRuntime()
+              ? "D:\\Projects\\kiln or /home/you/kiln"
+              : "D:\\Projects\\kiln"}
+            disabled={openingProject}
+          />
+        </label>
+        <p class="project-safety">
+          Kiln resolves the repository root with Git, keeps ownership checks on,
+          and remembers only workspace metadata and safe defaults.
+        </p>
+        {#if projectError}
+          <p class="project-error" role="alert">{projectError}</p>
+        {/if}
+        <div class="dialog-actions">
+          <button
+            class="secondary-button"
+            type="button"
+            disabled={openingProject}
+            onclick={() => (projectDialogOpen = false)}
+          >Cancel</button>
+          <button
+            class="primary-button"
+            type="submit"
+            disabled={openingProject || !projectPath.trim()}
+          >
+            {openingProject ? "Inspecting repository…" : "Open repository"}
+            {#if !openingProject}<span>→</span>{/if}
+          </button>
+        </div>
+      </form>
+    </div>
+  {/if}
 
   {#if mobileSidebarOpen}
     <button

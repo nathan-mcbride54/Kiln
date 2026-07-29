@@ -1,16 +1,13 @@
+use kiln_core::{
+    ChatMessage, ChatRequest, ChatResponse, ChatRole, ProviderCapabilities, ProviderCredentials,
+    ProviderKind, ProviderProtocol, TokenUsage,
+};
 use reqwest::{header::HeaderName, RequestBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{to_value, Value};
 
-use crate::{
-    error::ProviderError,
-    types::{
-        ChatRequest, ChatResponse, ChatRole, ProviderCapabilities, ProviderCredentials,
-        ProviderKind, ProviderProtocol, TokenUsage,
-    },
-};
-
-use super::{require_api_key, sensitive_header, ProviderAdapter};
+use super::{require_api_key, sensitive_header, ProviderAdapter, StreamState};
+use crate::error::ProviderError;
 
 pub(crate) struct AnthropicAdapter;
 
@@ -29,7 +26,7 @@ impl ProviderAdapter for AnthropicAdapter {
             custom_base_url: true,
             custom_headers: true,
             model_discovery: true,
-            streaming: false,
+            streaming: true,
             system_messages: true,
             temperature: true,
         }
@@ -80,6 +77,7 @@ impl ProviderAdapter for AnthropicAdapter {
             messages,
             max_tokens: request.max_output_tokens.unwrap_or(1024),
             temperature: request.temperature,
+            stream: false,
         };
         to_value(payload).map_err(|error| {
             ProviderError::InvalidRequest(format!(
@@ -95,6 +93,64 @@ impl ProviderAdapter for AnthropicAdapter {
     ) -> Result<ChatResponse, ProviderError> {
         parse_response(body, requested_model)
     }
+
+    fn parse_stream_data(
+        &self,
+        data: &str,
+        state: &mut StreamState,
+    ) -> Result<Vec<kiln_core::ChatStreamEvent>, ProviderError> {
+        let value: Value = serde_json::from_str(data).map_err(|error| {
+            ProviderError::MalformedResponse(format!(
+                "Anthropic returned a stream event Kiln could not parse: {error}"
+            ))
+        })?;
+        match value.get("type").and_then(Value::as_str) {
+            Some("message_start") => {
+                let message = value.get("message").ok_or_else(|| {
+                    ProviderError::MalformedResponse(
+                        "Anthropic started a stream without message metadata.".to_owned(),
+                    )
+                })?;
+                state.id = message.get("id").and_then(Value::as_str).map(str::to_owned);
+                state.model = message
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                state.usage.input_tokens = message
+                    .pointer("/usage/input_tokens")
+                    .and_then(Value::as_u64);
+                Ok(Vec::new())
+            }
+            Some("content_block_delta") => Ok(value
+                .pointer("/delta/text")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .and_then(|delta| state.delta(delta))
+                .into_iter()
+                .collect()),
+            Some("message_delta") => {
+                state.finish_reason = value
+                    .pointer("/delta/stop_reason")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                state.usage.output_tokens = value
+                    .pointer("/usage/output_tokens")
+                    .and_then(Value::as_u64);
+                state.usage.total_tokens =
+                    match (state.usage.input_tokens, state.usage.output_tokens) {
+                        (Some(input), Some(output)) => input.checked_add(output),
+                        _ => None,
+                    };
+                Ok(Vec::new())
+            }
+            Some("message_stop") => Ok(state.complete()?.into_iter().collect()),
+            Some("error") => Err(ProviderError::Upstream {
+                status: 500,
+                message: "Anthropic reported a failed stream.".to_owned(),
+            }),
+            _ => Ok(Vec::new()),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -106,6 +162,7 @@ struct AnthropicRequestPayload<'a> {
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
+    stream: bool,
 }
 
 #[derive(Serialize)]
@@ -114,9 +171,7 @@ struct AnthropicMessage {
     content: String,
 }
 
-fn collapse_messages<'a>(
-    messages: impl Iterator<Item = &'a crate::types::ChatMessage>,
-) -> Vec<AnthropicMessage> {
+fn collapse_messages<'a>(messages: impl Iterator<Item = &'a ChatMessage>) -> Vec<AnthropicMessage> {
     let mut collapsed: Vec<AnthropicMessage> = Vec::new();
     for message in messages {
         let role = match message.role {
@@ -169,7 +224,7 @@ fn parse_response(body: &str, requested_model: &str) -> Result<ChatResponse, Pro
     let content = parsed
         .content
         .iter()
-        .filter(|block| block.kind.as_deref().is_none_or(|kind| kind == "text"))
+        .filter(|block| block.kind.as_deref().map_or(true, |kind| kind == "text"))
         .filter_map(|block| block.text.as_deref())
         .collect::<String>();
     if content.is_empty() {
@@ -226,15 +281,15 @@ mod tests {
     #[test]
     fn collapses_adjacent_roles_for_anthropic() {
         let source = [
-            crate::types::ChatMessage {
+            ChatMessage {
                 role: ChatRole::User,
                 content: "one".to_owned(),
             },
-            crate::types::ChatMessage {
+            ChatMessage {
                 role: ChatRole::User,
                 content: "two".to_owned(),
             },
-            crate::types::ChatMessage {
+            ChatMessage {
                 role: ChatRole::Assistant,
                 content: "three".to_owned(),
             },
@@ -242,5 +297,46 @@ mod tests {
         let collapsed = collapse_messages(source.iter());
         assert_eq!(collapsed.len(), 2);
         assert_eq!(collapsed[0].content, "one\n\ntwo");
+    }
+
+    #[test]
+    fn normalizes_messages_api_stream_events() {
+        let adapter = AnthropicAdapter;
+        let mut state = StreamState::new(ProviderKind::Anthropic, "fallback".to_owned());
+        adapter
+            .parse_stream_data(
+                r#"{"type":"message_start","message":{"id":"msg_stream","model":"claude-test","usage":{"input_tokens":7}}}"#,
+                &mut state,
+            )
+            .unwrap();
+        let delta = adapter
+            .parse_stream_data(
+                r#"{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}"#,
+                &mut state,
+            )
+            .unwrap();
+        adapter
+            .parse_stream_data(
+                r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}"#,
+                &mut state,
+            )
+            .unwrap();
+        let completed = adapter
+            .parse_stream_data(r#"{"type":"message_stop"}"#, &mut state)
+            .unwrap();
+
+        assert_eq!(
+            delta,
+            vec![kiln_core::ChatStreamEvent::MessageDelta {
+                delta: "Hello".to_owned()
+            }]
+        );
+        assert!(matches!(
+            completed.as_slice(),
+            [kiln_core::ChatStreamEvent::MessageCompleted { response }]
+                if response.content == "Hello"
+                    && response.model == "claude-test"
+                    && response.usage.total_tokens == Some(9)
+        ));
     }
 }

@@ -1,199 +1,713 @@
 # Kiln evolving roadmap
 
-**Revision:** 0.1  
-**Last reviewed:** 2026-07-28  
-**Launch platforms:** Windows and Linux  
-**Later platform:** macOS
+> Generated from `product/roadmap.json`. Edit the structured source, then run
+> `npm run roadmap:render`. Use `npm run roadmap:check` in CI.
 
-Kiln's roadmap is measured in complete, reliable user journeys. A feature is
-not done because code exists; it is done when its acceptance gates pass on its
-target platforms.
+| Revision | Last reviewed | Current horizon | Launch platforms | Later platforms |
+|---|---|---|---|---|
+| 1.1 | 2026-07-28 | H0 — Product foundation | Windows and Linux | macOS |
 
-## Current horizon
+Kiln measures progress through complete, reliable user journeys. An item is
+done only when every acceptance criterion passes on its target platforms.
 
-### H0 — Product foundation
+## Current focus
 
-**Status:** `in_progress`  
-**Outcome:** A coherent product shell and stable technical contracts.
+| ID | Priority | Status | Outcome |
+|---|---:|---|---|
+| H0-004 | P0 | `in_progress` | A contributor can install, check, build, and launch the native shell from a clean checkout. |
+| H0-010 | P0 | `in_progress` | Cross-platform claims are proved on every change. |
+| H1-005 | P0 | `planned` | Users can inspect every agent change before accepting it. |
+| H1-006 | P0 | `planned` | Provider credentials survive safely without entering application data. |
 
-Scope:
+**Next review trigger:** H0 exit-gate review or any change to provider, event, permission, or platform contracts.
 
-- [x] Product language, visual system, and interactive workbench preview.
-- [x] Provider onboarding for OpenAI, Anthropic, and local compatible servers.
-- [x] Rust provider abstraction and a Svelte/Tauri desktop foundation.
-- [x] Versioned product specification, architecture, and roadmap.
-- [ ] Versioned command/event contract shared by desktop and headless modes.
-- [ ] SQLite event schema, migrations, projections, and replay fixtures.
-- [ ] Windows and Linux continuous integration.
+## Horizon overview
 
-Exit gates:
+| Horizon | Status | Progress | Outcome |
+|---|---|---:|---|
+| H0 — Product foundation | In progress | 80% | A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates. |
+| H1 — Connected vertical slice | In progress | 57% | One genuine repository task completes safely through each required provider type. |
+| H2 — Reliable task workspace | Planned | 0% | Kiln supports concurrent daily work that survives restarts and preserves user changes. |
+| H3 — Open agent ecosystem | Planned | 0% | Existing agents and external tools operate through Kiln's task, event, and permission surfaces. |
+| H4 — Windows and Linux beta | Planned | 0% | A polished, installable daily driver for regular personal use. |
+| H5 — Secure autonomy and remote operation | Deferred | 0% | Long-running tasks gain stronger containment and remote supervision without weakening the local trust model. |
+| H6 — macOS release | Later | 0% | Supported daily-driver workflows reach signed and notarized macOS parity. |
+| H7 — Advanced orchestration | Discovery | 0% | Kiln differentiates through understandable, policy-aware coordination rather than agent count. |
 
-- The Svelte UI contains no provider-specific transport logic.
+## H0 — Product foundation
+
+**Lane:** now · **Status:** In progress · **Timeframe:** Current
+
+**Outcome:** A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates.
+
+### Work items
+
+| ID | Priority | Status | Platforms | Dependencies | Deliverable |
+|---|---:|---|---|---|---|
+| H0-001 | P0 | `done` | Web, Windows, Linux | — | Product language and interactive preview |
+| H0-002 | P0 | `done` | Windows, Linux | — | Typed provider boundary |
+| H0-003 | P0 | `done` | All | — | Product specification and architecture |
+| H0-004 | P0 | `in_progress` | Windows, Linux | — | Reproducible Svelte/Tauri desktop build |
+| H0-005 | P0 | `done` | All | H0-003 | Living roadmap automation |
+| H0-006 | P0 | `done` | Windows, Linux, macOS-ready | H0-002 | Extract the UI-independent Rust core |
+| H0-007 | P0 | `done` | All | H0-006 | Versioned command and event contract |
+| H0-008 | P0 | `done` | Windows, Linux | H0-007 | SQLite event log and deterministic projections |
+| H0-009 | P0 | `done` | Windows, Linux | H0-007, H0-008 | Recorded fake-session replay |
+| H0-010 | P0 | `in_progress` | Windows, Linux | H0-004, H0-006 | Windows and Linux continuous integration |
+
+### Acceptance criteria
+
+#### H0-001 — Product language and interactive preview
+
+A user can understand Kiln's task, provider, review, and roadmap model before repository execution exists.
+
+- Workbench, provider onboarding, diff review, and roadmap views are interactive.
+- Web production build, lint, and rendered-output tests pass.
+- No starter branding or unused starter surface remains.
+
+Last reviewed 2026-07-28. Completed in the initial Kiln foundation.
+
+#### H0-002 — Typed provider boundary
+
+OpenAI, Anthropic, and a local compatible server share one normalized Rust command surface.
+
+- OpenAI Responses, Anthropic Messages, and local Chat Completions adapters compile.
+- Connection tests and normalized chat responses use typed request and error models.
+- Recorded parsing, URL-safety, and secret-redaction tests pass for all provider types.
+
+Last reviewed 2026-07-28. Non-streaming foundation complete; streaming remains H1.
+
+#### H0-003 — Product specification and architecture
+
+Product boundaries, safety guarantees, platform claims, and non-goals are explicit and reviewable.
+
+- The product specification defines launch workflows and permission semantics.
+- The architecture separates interface, orchestration, providers, workspace host, and storage.
+- Local-first control-plane decisions are recorded.
+
+Last reviewed 2026-07-28. Completed in revision 0.1.
+
+#### H0-004 — Reproducible Svelte/Tauri desktop build
+
+A contributor can install, check, build, and launch the native shell from a clean checkout.
+
+- JavaScript dependencies are locked.
+- Svelte type checking and production build pass.
+- Tauri launches the generated frontend through the typed Rust commands.
+- A clean Windows build passes; a clean Linux build passes in CI.
+
+Last reviewed 2026-07-28. Revision 1.0 adds the desktop lockfile, aligns Svelte's Vite plugin with Vite 8, migrates minification to Oxc, and proves a clean Windows install, type check, and production build. The first hosted Linux build remains.
+
+#### H0-005 — Living roadmap automation
+
+Repository documentation and both in-product roadmap views are generated from one reviewed source.
+
+- Stable roadmap data is stored in product/roadmap.json.
+- ROADMAP.md and web/desktop summary modules are generated from that source.
+- A freshness check fails when generated outputs drift.
+
+Last reviewed 2026-07-28. Added in revision 0.2 to eliminate roadmap duplication.
+
+#### H0-006 — Extract the UI-independent Rust core
+
+Provider, task, policy, and event behavior can run and test without Tauri.
+
+- kiln-core, kiln-providers, and kiln-platform crates have no Tauri dependency.
+- kiln-tauri contains transport and application wiring only.
+- Provider fixture tests run against the extracted crates.
+
+Last reviewed 2026-07-28. Completed in revision 0.3 with a Cargo workspace, Tauri-free core/provider/platform crates, and 15 passing extracted-crate tests.
+
+#### H0-007 — Versioned command and event contract
+
+Every task transition has a stable, serializable, causally ordered representation.
+
+- Project, workspace, task, session, turn, approval, tool, artifact, and receipt events are versioned.
+- Per-task sequence and causation identifiers are defined.
+- Unknown additive event fields are tolerated and breaking versions fail explicitly.
+- The Svelte interface consumes application events rather than provider events.
+
+Last reviewed 2026-07-28. Completed in revision 0.4: Rust and TypeScript contracts, deterministic Svelte projections, provider-result normalization, compatibility tests, contract documentation, and ADR 0002.
+
+#### H0-008 — SQLite event log and deterministic projections
+
+Task state survives restart and can be rebuilt from an auditable local history.
+
+- Events append transactionally with schema and migration versions.
+- Secrets and raw environment snapshots are forbidden from durable payloads.
+- Projection rebuilds produce stable snapshot fixtures.
+- Migration forward and rollback tests pass.
+
+Last reviewed 2026-07-28. Completed in revision 0.6 with transactional SQLite append/replay, migrations, secret rejection, close/reopen recovery, versioned projection snapshots, Tauri application-data initialization, typed storage commands, durable-before-visible Svelte batches, and startup restore.
+
+#### H0-009 — Recorded fake-session replay
+
+The complete task interface can be developed and tested without a live provider.
+
+- A fixture includes streaming text, a plan, a proposed tool, an approval, output, a diff, tests, and a completion receipt.
+- Replay produces the expected task, activity, and inspector projections.
+- Repeated replay is deterministic.
+
+Last reviewed 2026-07-28. Completed in revision 0.7 with one generated 25-event recording, rich Rust and TypeScript projection snapshots, visible desktop artifacts, and deterministic replay tests.
+
+#### H0-010 — Windows and Linux continuous integration
+
+Cross-platform claims are proved on every change.
+
+- Rust format, check, unit tests, and frontend freshness/build checks run on both platforms.
+- Fixtures cover spaces, Unicode paths, line endings, and process cancellation.
+- Release-blocking failures are visible before merge.
+
+Last reviewed 2026-07-28. Revision 0.7 adds a Windows/Ubuntu quality matrix and executable path, Unicode, line-ending, and cancellation fixtures. Revision 1.0 supplies the desktop lockfile; hosted runs and required-check configuration remain.
+
+### Exit gates
+
+- The Svelte interface contains no provider transport or orchestration business logic.
 - The Rust core runs in tests without Tauri.
-- A recorded fake session can replay into the complete task UI.
+- A recorded fake session replays into the complete task interface.
 - Database projections rebuild deterministically.
 - Clean Windows and Linux builds pass.
+- Architecture changes have decision records and roadmap change notes.
 
-## Committed horizons
+## H1 — Connected vertical slice
 
-| ID | Horizon | Status | User outcome |
-|---|---|---|---|
-| H0 | Product foundation | `in_progress` | Stable shell and contracts |
-| H1 | Connected vertical slice | `planned` | One real task through each required provider |
-| H2 | Reliable task workspace | `planned` | Concurrent daily work that survives restarts |
-| H3 | Open agent ecosystem | `planned` | ACP agents and MCP tools in one task UI |
-| H4 | Windows + Linux beta | `planned` | Installable, accessible daily driver |
-| H5 | Secure autonomy | `deferred` | Stronger isolation and remote supervision |
-| H6 | macOS release | `later` | Signed, notarized feature parity |
-| H7 | Advanced orchestration | `discovery` | Coordinated specialist-agent workflows |
+**Lane:** now · **Status:** In progress · **Timeframe:** Parallel with H0 infrastructure gates
 
-### H1 — Connected vertical slice
+**Outcome:** One genuine repository task completes safely through each required provider type.
 
-Deliverables:
+### Work items
 
-- Streaming OpenAI Responses adapter.
-- Streaming Anthropic Messages adapter.
-- Streaming and non-streaming local Chat Completions adapter.
-- Provider discovery, capability diagnostics, and manual model fallback.
-- Native file read/write, search, and command tools.
-- Ordered activity timeline, cancellation, approval flow, and diff review.
+| ID | Priority | Status | Platforms | Dependencies | Deliverable |
+|---|---:|---|---|---|---|
+| H1-001 | P0 | `done` | Windows, Linux | H0-007, H0-008 | Normalized streaming and cancellation |
+| H1-002 | P0 | `done` | Windows, Linux | H0-006, H0-008 | Open and remember a Git repository |
+| H1-003 | P0 | `done` | Windows, Linux | H1-002, H1-004 | Read-only file and search tools |
+| H1-004 | P0 | `done` | All | H0-007 | Central permission engine |
+| H1-005 | P0 | `planned` | Windows, Linux | H1-003, H1-004 | File editing and real diff review |
+| H1-006 | P0 | `planned` | Windows, Linux | H0-006 | OS credential storage and redaction pipeline |
+| H1-007 | P1 | `planned` | Windows, Linux | H1-001 | Provider diagnostics and capability discovery |
 
-Exit gates:
+### Acceptance criteria
 
-- The same fixture task completes through all three provider types.
+#### H1-001 — Normalized streaming and cancellation
+
+Users see responsive provider output and can stop a turn reliably.
+
+- All three adapters emit normalized message deltas and completion events.
+- Cancellation propagates through provider HTTP and active tool jobs.
+- Late provider events cannot mutate a cancelled turn.
+
+Last reviewed 2026-07-28. Completed in revision 0.9 with normalized SSE adapters, a shared cancellation domain, ordered Tauri channels, durable desktop deltas, a stop control, late-event guards, fixtures, and ADR 0005.
+
+#### H1-002 — Open and remember a Git repository
+
+A user can select a real project and start a task against a truthful workspace state.
+
+- Repository identity, root, branch, status, and project defaults are projected.
+- Invalid or unsafe repository selections fail with actionable messages.
+- Remembered projects contain no credentials.
+
+Last reviewed 2026-07-28. Completed in revision 1.0 with a Tauri-free bounded Git inspector, typed project/workspace projections, immutable remembered-project events, live startup revalidation, actionable selection errors, credential-free defaults, a desktop project picker, and cross-language tests.
+
+#### H1-003 — Read-only file and search tools
+
+An agent can inspect a repository through typed, visible, policy-checked tools.
+
+- File read, file search, and text search use typed schemas.
+- Paths are constrained to the selected workspace.
+- Tool proposals and results appear in the ordered activity timeline.
+
+Last reviewed 2026-07-28. Completed in revision 1.1 with tagged Rust and TypeScript schemas, canonical workspace containment, Git-aware bounded search, central tool-and-path policy checks, cancellation, transient raw results, durable activity summaries, desktop inspection controls, tests, and ADR 0006.
+
+#### H1-004 — Central permission engine
+
+Every agent action is evaluated as allow, ask, or deny against a named resource.
+
+- Policies scope tool, command, path, network host, and extension resources.
+- Allow-once decisions never persist silently.
+- Denied actions execute no provider, filesystem, process, or network side effect.
+- Extensions cannot bypass policy evaluation.
+
+Last reviewed 2026-07-28. Completed in revision 0.8 with typed resource and origin rules, deterministic precedence, ephemeral allow-once grants, guarded execution, extension enforcement, tests, and ADR 0004.
+
+#### H1-005 — File editing and real diff review
+
+Users can inspect every agent change before accepting it.
+
+- Writes are workspace-bound, policy-checked, and recorded as artifacts.
+- Unified diff shows real changed files and hunks.
+- An interrupted write cannot leave an unreported partial state.
+
+Last reviewed 2026-07-28. Replaces the current fixture diff.
+
+#### H1-006 — OS credential storage and redaction pipeline
+
+Provider credentials survive safely without entering application data.
+
+- Credential Manager and libsecret implementations store opaque profile references.
+- Secret values are zeroized where practical.
+- Provider errors, diagnostics, exports, and crash reports pass central redaction tests.
+
+Last reviewed 2026-07-28. Moved ahead of broader provider onboarding polish.
+
+#### H1-007 — Provider diagnostics and capability discovery
+
+A connection test explains exactly which behaviors a model endpoint supports.
+
+- Reachability, authentication, model discovery, streaming, and tool compatibility report separately.
+- The UI follows advertised capabilities instead of provider-name conditions.
+- Cloud gateway policy is explicit and warns before sending credentials to a custom origin.
+
+Last reviewed 2026-07-28. Includes the unresolved custom cloud-endpoint policy.
+
+### Exit gates
+
+- The same fixture task completes through OpenAI, Anthropic, and a local compatible server.
 - Tool input and results appear in causal order.
-- Cancellation stops generation and tool execution within a documented bound.
-- A denied tool never executes.
-- Every changed file can be reviewed before acceptance.
-- Credentials never appear in the database, logs, exports, or crash reports.
+- Cancellation stops generation and execution within a documented bound.
+- Denied tools produce no side effect.
+- Every changed file is inspectable before acceptance.
+- Credentials never appear in events, logs, exports, or crash reports.
 
-### H2 — Reliable task workspace
+## H2 — Reliable task workspace
 
-Deliverables:
+**Lane:** next · **Status:** Planned · **Timeframe:** After the H1 slice
 
-- Per-task Git branches and worktrees.
-- Concurrent task supervision with ordered per-task queues.
-- Checkpoints, retry, resume, fork, archive, and targeted restore.
-- Crash-resumable sessions and explicit turn-completion receipts.
-- Terminal inspector, verification profiles, and context compaction.
+**Outcome:** Kiln supports concurrent daily work that survives restarts and preserves user changes.
 
-Exit gates:
+### Work items
 
-- Two tasks can change one repository without sharing state.
-- Restarting mid-turn produces a truthful, recoverable task.
+| ID | Priority | Status | Platforms | Dependencies | Deliverable |
+|---|---:|---|---|---|---|
+| H2-001 | P0 | `planned` | Windows, Linux | H1-002, H1-005 | Per-task Git worktrees and branches |
+| H2-002 | P0 | `planned` | Windows, Linux | H2-001, H0-007 | Concurrent task supervision |
+| H2-003 | P0 | `planned` | Windows, Linux | H2-001, H0-008 | Checkpoints, retry, fork, and targeted restore |
+| H2-004 | P0 | `planned` | Windows, Linux | H0-008, H1-001 | Crash-resumable sessions |
+| H2-005 | P1 | `planned` | Windows, Linux | H1-004 | Terminal and verification profiles |
+| H2-006 | P1 | `planned` | All | H0-008, H1-001 | Context compaction and usage visibility |
+
+### Acceptance criteria
+
+#### H2-001 — Per-task Git worktrees and branches
+
+Concurrent task changes remain isolated without claiming a security sandbox.
+
+- Create, recover, inspect, and clean task worktrees without deleting unrelated user data.
+
+Last reviewed 2026-07-28. Retained after direct-workspace H1 validation.
+
+#### H2-002 — Concurrent task supervision
+
+Multiple tasks run without interleaving events, approvals, output, or paths.
+
+- Ordered per-task queues and job ownership pass concurrency and fault-injection tests.
+
+Last reviewed 2026-07-28. No scope change.
+
+#### H2-003 — Checkpoints, retry, fork, and targeted restore
+
+Users can recover choices without rewriting unrelated work.
+
+- Checkpoint restore is auditable, scoped, and preserves unrelated user changes.
+
+Last reviewed 2026-07-28. No scope change.
+
+#### H2-004 — Crash-resumable sessions
+
+Application or adapter failure never fabricates completion or loses the durable task state.
+
+- Fault-injection restart tests produce explicit interrupted, recoverable, or completed receipts.
+
+Last reviewed 2026-07-28. No scope change.
+
+#### H2-005 — Terminal and verification profiles
+
+Tasks run explicit project checks with inspectable command output.
+
+- Shell selection, quoting, PTY lifecycle, process-tree cancellation, and verification receipts pass platform fixtures.
+
+Last reviewed 2026-07-28. No scope change.
+
+#### H2-006 — Context compaction and usage visibility
+
+Long sessions remain understandable and within provider limits.
+
+- Compaction boundaries are auditable and usage information degrades honestly by provider capability.
+
+Last reviewed 2026-07-28. No scope change.
+
+### Exit gates
+
+- Two tasks can change one repository without sharing workspace or event state.
+- Restart during a turn produces a truthful recoverable task.
 - Restoring one checkpoint preserves unrelated user work.
-- Child processes and worktrees are cleaned up after cancellation or restart.
+- Child processes and worktrees clean up after cancellation and restart.
 - Completed tasks retain verification evidence and a finalized diff.
 
-### H3 — Open agent ecosystem
+## H3 — Open agent ecosystem
 
-Deliverables:
+**Lane:** later · **Status:** Planned · **Timeframe:** After workspace reliability
 
-- MCP clients for local stdio and remote HTTP servers.
-- ACP client with capability negotiation.
-- Goose and OpenCode connection profiles.
-- Extension health, lifecycle, and per-tool permissions.
-- Sanitized session import and export.
+**Outcome:** Existing agents and external tools operate through Kiln's task, event, and permission surfaces.
 
-Exit gates:
+### Work items
 
-- Goose and OpenCode sessions run through the same task surface.
-- Unsupported features are disabled with an explanation.
-- MCP tools cannot bypass the permission engine.
-- A failed adapter can restart without restarting Kiln.
-- Exports can omit secrets, source content, and sensitive command output.
+| ID | Priority | Status | Platforms | Dependencies | Deliverable |
+|---|---:|---|---|---|---|
+| H3-001 | P1 | `planned` | Windows, Linux | H1-004, H2-002 | MCP stdio and HTTP clients |
+| H3-002 | P1 | `planned` | Windows, Linux | H2-002 | ACP client and capability negotiation |
+| H3-003 | P1 | `planned` | Windows, Linux | H3-002 | Goose and OpenCode profiles |
+| H3-004 | P2 | `planned` | All | H0-008, H1-006 | Sanitized session import and export |
 
-### H4 — Windows + Linux beta
+### Acceptance criteria
 
-Deliverables:
+#### H3-001 — MCP stdio and HTTP clients
 
-- Signed installers and safe updater path.
-- Command palette and complete keyboard navigation.
-- Accessibility, reduced-motion, and compact-density passes.
-- Long-session performance work.
-- Redaction-preview diagnostics.
-- Cost, token, and latency reporting when advertised.
-- Explicit commit-preparation flow and backup controls.
+Users can add typed tools without weakening central policy.
 
-Exit gates:
+- MCP lifecycle, health, schemas, calls, and approvals are represented as domain events.
+
+Last reviewed 2026-07-28. Begins only after the native permission path is proven.
+
+#### H3-002 — ACP client and capability negotiation
+
+Kiln can supervise compatible agents without provider-specific UI integrations.
+
+- Sessions, plans, tools, files, terminals, cancellation, and receipts map into Kiln events.
+
+Last reviewed 2026-07-28. Delayed until cancellation and recovery contracts are stable.
+
+#### H3-003 — Goose and OpenCode profiles
+
+Users can connect established agent runtimes through guided configuration.
+
+- One Goose and one OpenCode fixture complete through the common task interface.
+
+Last reviewed 2026-07-28. No bespoke task UI is permitted.
+
+#### H3-004 — Sanitized session import and export
+
+Users can move or share task evidence with explicit content controls.
+
+- A preview can omit secrets, source, command output, and provider payloads before export.
+
+Last reviewed 2026-07-28. No scope change.
+
+### Exit gates
+
+- Goose and OpenCode sessions run through the same task interface.
+- Unsupported capabilities disable with an explanation.
+- MCP tools pass through the central permission engine.
+- A failed adapter restarts without restarting Kiln.
+- Exports can omit secrets and sensitive content.
+
+## H4 — Windows and Linux beta
+
+**Lane:** later · **Status:** Planned · **Timeframe:** After ecosystem hardening
+
+**Outcome:** A polished, installable daily driver for regular personal use.
+
+### Work items
+
+| ID | Priority | Status | Platforms | Dependencies | Deliverable |
+|---|---:|---|---|---|---|
+| H4-001 | P0 | `planned` | Windows, Linux | H0-010, H2-004 | Installers, signing, and safe updates |
+| H4-002 | P0 | `planned` | All | H2-005 | Keyboard, accessibility, and reduced motion |
+| H4-003 | P0 | `planned` | Windows, Linux | H2-004, H2-006 | Long-session performance and diagnostics |
+| H4-004 | P1 | `planned` | All | H2-006, H0-008 | Usage, cost, backup, and retention controls |
+
+### Acceptance criteria
+
+#### H4-001 — Installers, signing, and safe updates
+
+Users can install, update, roll back, and remove Kiln predictably.
+
+- Signed release artifacts and update/rollback smoke tests pass on launch platforms.
+
+Last reviewed 2026-07-28. No scope change.
+
+#### H4-002 — Keyboard, accessibility, and reduced motion
+
+Core journeys remain operable without a pointer or animation.
+
+- Core workflows meet the documented WCAG 2.2 AA interaction expectations.
+
+Last reviewed 2026-07-28. No scope change.
+
+#### H4-003 — Long-session performance and diagnostics
+
+Large and long-running tasks stay responsive and explain failures safely.
+
+- Performance fixtures and redaction-preview diagnostic bundles pass release budgets.
+
+Last reviewed 2026-07-28. Combined related performance and support work.
+
+#### H4-004 — Usage, cost, backup, and retention controls
+
+Users understand provider consumption and control local history.
+
+- Usage degrades honestly and backup/retention operations are explicit and recoverable.
+
+Last reviewed 2026-07-28. Combined lifecycle controls into one release outcome.
+
+### Exit gates
 
 - All core flows are keyboard accessible.
-- A 10,000-event session remains within the agreed responsiveness budget.
+- A 10,000-event session meets the agreed responsiveness budget.
 - A 24-hour task leaks neither processes nor unbounded memory.
-- Upgrades and rollback preserve sessions and policies.
+- Upgrade and rollback preserve sessions and policies.
 - Windows and Linux release smoke suites pass.
 
-## Deferred and later horizons
+## H5 — Secure autonomy and remote operation
 
-### H5 — Secure autonomy and remote operation
+**Lane:** later · **Status:** Deferred · **Timeframe:** Deferred until the local product is stable
 
-Starts only after the local product is reliable. Candidate scope includes
-platform sandboxing, network egress policy, resource budgets, a headless daemon,
-authenticated pairing, and reconnectable event streaming.
+**Outcome:** Long-running tasks gain stronger containment and remote supervision without weakening the local trust model.
 
-Security gates must explicitly cover filesystem, network, CPU, memory,
-execution-time, pairing revocation, and disconnected-client behavior.
+### Work items
 
-### H6 — macOS release
+| ID | Priority | Status | Platforms | Dependencies | Deliverable |
+|---|---:|---|---|---|---|
+| H5-001 | P1 | `deferred` | Windows, Linux | H4-003 | Platform process and filesystem containment |
+| H5-002 | P2 | `deferred` | Windows, Linux | H5-001 | Headless daemon and authenticated pairing |
 
-Requires native PTY and Keychain behavior, physical Apple Silicon validation,
-signing, notarization, hardened runtime, updater validation, and parity across
-provider, Git, terminal, permission, recovery, and migration suites.
+### Acceptance criteria
 
-### H7 — Advanced orchestration
+#### H5-001 — Platform process and filesystem containment
 
-Discovery candidates:
+Autonomous jobs execute within documented OS-specific limits.
 
-- Parallel specialist agents with a visible dependency graph.
-- Compare models on one task using recorded evaluation fixtures.
-- Policy-aware automatic reviewer.
-- Reusable task recipes.
-- Local semantic index.
-- Pull-request provider integrations.
-- Shared team policy and audit export.
+- Containment boundaries and escape limitations have a dedicated security review.
 
-A candidate becomes committed only after its user problem, success metric, and
-security model are defined.
+Last reviewed 2026-07-28. Deferred until local execution is reliable.
 
-## Cross-cutting quality gates
+#### H5-002 — Headless daemon and authenticated pairing
 
-Every horizon must add or retain:
+A remote client can supervise without direct filesystem access.
 
-- Unit tests for state machines and policy decisions.
-- Recorded-stream tests for provider normalization.
-- End-to-end happy, denied, cancelled, and restarted paths.
-- Secret-redaction coverage.
-- Windows and Linux path, quoting, shell, PTY, and process-tree coverage.
-- Forward and rollback migration coverage.
-- Accessibility checks for new user-visible workflows.
-- Honest degradation when a provider lacks a capability.
+- Pairing, revocation, reconnect, and least-privilege APIs pass a separate threat model.
 
-## Roadmap record format
+Last reviewed 2026-07-28. Deferred with secure autonomy.
 
-Every item carries:
+### Exit gates
 
-- Stable ID and user outcome.
-- Status: `discovery`, `planned`, `in_progress`, `blocked`, `beta`, `done`, or
-  `deferred`.
-- Target platforms and dependencies.
-- Acceptance criteria.
-- Decision links.
-- Owner when applicable.
-- Last-reviewed date and a scope-change note.
+- Filesystem, network, CPU, memory, and execution-time limits are enforced and visible.
+- Remote pairing expires, revokes, and reconnects safely.
+- Security documentation distinguishes guarantees from best-effort controls.
 
-Roadmap changes are reviewed at milestone boundaries and versioned with
-releases. Provider-specific behavior must update the capability matrix;
-architectural changes require a short decision record.
+## H6 — macOS release
 
-## Initial success metrics
+**Lane:** later · **Status:** Later · **Timeframe:** After launch-platform parity
+
+**Outcome:** Supported daily-driver workflows reach signed and notarized macOS parity.
+
+### Work items
+
+| ID | Priority | Status | Platforms | Dependencies | Deliverable |
+|---|---:|---|---|---|---|
+| H6-001 | P1 | `deferred` | macOS | H4-001, H4-003 | Native macOS platform adapter and packaging |
+
+### Acceptance criteria
+
+#### H6-001 — Native macOS platform adapter and packaging
+
+Kiln behaves natively across shell, PTY, paths, Keychain, signing, and updates.
+
+- Physical-hardware release gates pass and remaining differences appear in-product.
+
+Last reviewed 2026-07-28. Architecture-compatible now; support claim remains deferred.
+
+### Exit gates
+
+- Provider, Git, terminal, permission, credential, update, and recovery suites pass.
+- Packages are signed and notarized.
+- Apple Silicon is verified on physical hardware.
+
+## H7 — Advanced orchestration
+
+**Lane:** later · **Status:** Discovery · **Timeframe:** Exploratory
+
+**Outcome:** Kiln differentiates through understandable, policy-aware coordination rather than agent count.
+
+### Work items
+
+| ID | Priority | Status | Platforms | Dependencies | Deliverable |
+|---|---:|---|---|---|---|
+| H7-001 | P2 | `discovery` | All | H3-002, H4-003 | Parallel specialist task graphs |
+| H7-002 | P2 | `discovery` | All | H0-009, H2-001 | Model comparison and evaluation fixtures |
+| H7-003 | P2 | `discovery` | All | H2-003, H3-001 | Reusable recipes and policy-aware review |
+
+### Acceptance criteria
+
+#### H7-001 — Parallel specialist task graphs
+
+Users can understand dependencies, ownership, and evidence across collaborating agents.
+
+- Discovery defines when specialist graphs outperform one recoverable task loop.
+
+Last reviewed 2026-07-28. Not committed.
+
+#### H7-002 — Model comparison and evaluation fixtures
+
+Users can compare models on reproducible tasks without duplicating side effects.
+
+- Discovery defines isolation, evaluation measures, and cost controls.
+
+Last reviewed 2026-07-28. Not committed.
+
+#### H7-003 — Reusable recipes and policy-aware review
+
+Repeated engineering workflows become inspectable recipes rather than hidden automation.
+
+- Discovery defines authorship, trust, versioning, and rollback semantics.
+
+Last reviewed 2026-07-28. Not committed.
+
+### Exit gates
+
+- Every candidate has a user problem, success measure, and security model before commitment.
+
+## Risk register
+
+| ID | Severity | Status | Risk | Mitigation |
+|---|---|---|---|---|
+| RISK-001 | high | mitigating | The desktop frontend is not yet proven from a clean dependency install. | Revision 1.0 commits desktop/package-lock.json and proves a clean Windows install, check, and build. Confirm the first hosted Ubuntu build before closing the risk. |
+| RISK-002 | medium | mitigated | Future orchestration work could regress into the desktop transport layer. | The workspace now isolates core, providers, platform, and Git workspace contracts from kiln-tauri; keep Tauri-free dependency checks in CI. |
+| RISK-003 | high | open | Credentials and upstream payloads may leak without OS storage and centralized redaction. | Keep credentials ephemeral and complete H1-006 before durable provider profiles. |
+| RISK-004 | medium | mitigating | Provider defaults and roadmap content can drift across Rust, web, desktop, and documentation. | H0-005 establishes generated roadmap outputs; provider-contract generation remains H1-007. |
+| RISK-005 | medium | mitigating | Windows works locally while Linux behavior remains an architectural claim. | H0-010 now defines Windows and Ubuntu jobs plus platform fixtures; confirm the first hosted Linux run and require both checks. |
+| RISK-006 | medium | mitigated | Concurrent writers or corrupt event order could make restart projections untruthful. | H0-008 uses one transactional SQLite writer, database uniqueness constraints, durable-tail checks, and validated ordered replay. |
+| RISK-007 | high | mitigated | Provider bytes arriving after cancellation could rewrite a terminal turn or leave background work active. | H1-001 shares cancellation across HTTP and jobs, gives cancellation race priority, stops the channel at one terminal batch, and blocks late mutations in both projectors. |
+
+## Decision queue
+
+| ID | Status | Decision | Review point | Reason |
+|---|---|---|---|---|
+| DEC-001 | accepted | Use a local-first Rust control plane with a Svelte/Tauri desktop client. | H2 exit | The core must support desktop and future headless transports without duplicating orchestration. |
+| DEC-002 | open | Whether cloud providers may use custom gateway origins. | Before H1-007 | Gateway flexibility must not make credential destination ambiguous. |
+| DEC-003 | open | Whether Rig becomes the native loop implementation or remains architectural inspiration. | H2 exit | Adoption should follow a stable event, tool, and provider contract. |
+| DEC-004 | open | Which Linux package formats receive first-class support. | Before H4-001 | Packaging investment should follow tested user distribution needs. |
+| DEC-005 | accepted | Use versioned, causally ordered application events as the interface and replay boundary. | H2 exit | Provider payloads and transport behavior must not become the product state model. |
+| DEC-006 | accepted | Use SQLite as an immutable local event log with one H0 writer. | H2 performance review | Kiln needs transactional restart and replay without requiring an external service. |
+| DEC-007 | accepted | Route every native and extension action through one guarded permission engine. | H3 extension exit | Allow, ask, deny, and ephemeral approval semantics must not vary by transport or tool source. |
+| DEC-008 | accepted | Normalize provider SSE behind ordered Tauri channels and one shared cancellation domain. | H2 crash-resume review | Streaming must remain provider-independent, durable before display, and immune to late cancellation races. |
+
+## Success metrics
 
 - Median time from opening a repository to starting a task.
 - Successful completion rate by provider profile.
 - Approval prompts per completed task.
 - Cancellation success rate and latency.
 - Crash-recovery success rate.
-- Tasks completed without an external terminal.
 - Completed tasks with verification evidence.
-- Provider-normalization errors per 1,000 events.
+- Provider normalization errors per 1,000 events.
 - User-restored changes per completed task.
 - Installer and update success by platform.
+
+## Roadmap policy
+
+- `discovery`: Problem and success measure are being defined.
+- `planned`: Accepted scope with dependencies and acceptance criteria.
+- `in_progress`: Implementation is active and the item is not yet through every gate.
+- `blocked`: No meaningful progress is possible until a named dependency changes.
+- `beta`: User journey works but release-quality gates remain.
+- `done`: Every acceptance criterion passes on the target platforms.
+- `deferred`: Intentionally postponed with the reason kept visible.
+- New provider-specific behavior must update the capability contract.
+- Architectural changes require a short decision record.
+- Deferred work remains visible with its reason.
+- Progress is measured by completed user journeys and reliability gates, not feature count.
+
+## Change history
+
+### 2026-07-28 — revision 1.0
+
+Completed real Git project selection and removed the desktop dependency-install blocker.
+
+- Added the Tauri-free kiln-workspace crate with canonical-root discovery, path-derived identity, branch and commit projection, porcelain-v2 status parsing, ownership checks, disabled hooks and filesystem monitors, bounded output, and a 15-second inspection limit.
+- Persisted project_opened and workspace_ready events before activation, derived recent projects from immutable SQLite history, and revalidated remembered roots at startup without storing credentials or remote URLs.
+- Added typed Rust and TypeScript project projections plus a desktop picker that shows branch, truthful working-tree state, recent availability, and actionable invalid-selection errors while blocking turns without a repository.
+- Generated desktop/package-lock.json, aligned the official Svelte Vite plugin with Vite 8, migrated production minification to Oxc, and passed a clean Windows npm ci, Svelte check, and desktop build.
+- Added real temporary-Git, storage, transport, projection, and credential-shape tests plus the project/workspace guide; read-only file and search tools are next.
+
+### 2026-07-28 — revision 0.9
+
+Completed normalized provider streaming and cancellation from HTTP frames to durable desktop projection.
+
+- Added OpenAI Responses, Anthropic Messages, and compatible local SSE parsers with normalized delta, completion, and cancellation events.
+- Added a shared cancellation domain that drops active HTTP and job futures and gives cancellation priority over queued late frames.
+- Streamed normalized events through a typed Tauri channel, converted them to application events, and committed each batch before Svelte projection.
+- Added a desktop stop control, duplicate-turn protection, terminal channel handling, and late-mutation guards in Rust and TypeScript.
+- Added protocol, framing, cancellation, registry, bridge, and projection tests plus the streaming guide and ADR 0005; repository selection is next.
+
+### 2026-07-28 — revision 0.8
+
+Completed the central permission engine before introducing repository tools.
+
+- Added typed tool, command, path, network-host, and extension resources with task, project, provider-profile, and global policy targets.
+- Defined deterministic target, origin, resource, and deny/ask/allow precedence with an ask-by-default fallback.
+- Kept allow-once grants outside serializable rules and consumed them at the guarded execution boundary.
+- Proved denied native and extension-origin actions invoke no side-effect closure, documented the trust boundary, and accepted ADR 0004.
+- Started H1-001 streaming and cancellation while H0 desktop dependency and hosted CI gates remain open.
+
+### 2026-07-28 — revision 0.7
+
+Completed the recorded-session integration gate and established the Windows/Linux quality workflow.
+
+- Added one canonical 25-event fake session covering streaming, planning, approval, tool output, a diff, tests, and a final receipt.
+- Generated the Svelte recording from JSON and verified deterministic task and inspector projections against a Rust snapshot.
+- Added a Windows and Ubuntu GitHub Actions matrix with web, Svelte, Rust, freshness, lint, and build gates.
+- Added executable fixtures for spaces, Unicode paths, mixed line endings, and process cancellation; H0-010 remains active until hosted runs and required checks are confirmed.
+- Marked H0-004 blocked because the approval service still rejects the registry request needed to create the desktop lockfile.
+
+### 2026-07-28 — revision 0.6
+
+Completed restart-safe SQLite integration from Tauri startup through the Svelte projection.
+
+- Initialized kiln.db under the Tauri application-data directory and exposed typed append/load commands.
+- Added a durable desktop history coordinator that commits event batches before projection and resets its sequencer after failed writes.
+- Restored the ordered task stream and deterministic projection before enabling the desktop composer.
+- Added durability coordinator tests and marked H0-008 complete; recorded fake-session replay and CI are next.
+
+### 2026-07-28 — revision 0.5
+
+Started durable SQLite event storage behind a Tauri-free crate.
+
+- Added storage schema version 1 with indexed immutable event envelopes and explicit migration history.
+- Implemented one-stream transactional append, durable-tail sequence checks, and validated replay.
+- Added persistence-time credential-marker rejection plus atomicity, rollback, migration, file reopen, and projection-snapshot tests.
+- Documented the physical schema, recovery rules, safety boundary, and ADR 0003; H0-008 remains in progress for desktop append/startup integration.
+
+### 2026-07-28 — revision 0.4
+
+Completed the versioned application-event boundary from Rust through the Svelte projection.
+
+- Added message lifecycle events and stable camel-case transport fields to the Rust contract.
+- Replaced direct Svelte conversation and activity mutation with deterministic ordered-event projections.
+- Converted provider success and failure results into message and receipt events at the desktop bridge.
+- Added cross-language contract checks, replay tests, complete contract documentation, and ADR 0002.
+
+### 2026-07-28 — revision 0.3
+
+Extracted the Tauri-free Rust foundation and started the versioned application event contract.
+
+- Created a Cargo workspace with kiln-core, kiln-providers, kiln-platform, and a thin kiln-tauri shell.
+- Moved provider fixtures and normalized contracts out of the desktop transport.
+- Added versioned command and event envelopes with causal stream ordering and forward-compatible field handling.
+- Marked H0-006 done and H0-007 in progress after workspace and isolated-core tests passed.
+
+### 2026-07-28 — revision 0.2
+
+Converted the roadmap into a generated source of truth and incorporated the foundation review.
+
+- Prioritized a reproducible desktop build, Rust core extraction, event contract, SQLite replay, and CI.
+- Required permissions before repository tools and streaming before ecosystem integrations.
+- Added risk, decision, metric, and change-history records.
+- Synchronized web and desktop roadmap summaries from the structured source.
+
+### 2026-07-28 — revision 0.1
+
+Established the initial H0–H7 product roadmap.
+
+- Set Windows and Linux as launch platforms.
+- Deferred macOS support and secure remote operation until release gates are met.

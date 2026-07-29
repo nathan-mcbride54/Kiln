@@ -1,0 +1,917 @@
+{
+  "schemaVersion": 1,
+  "product": "Kiln",
+  "revision": "1.1",
+  "lastReviewed": "2026-07-28",
+  "currentHorizon": "H0",
+  "releaseTargets": ["Windows", "Linux"],
+  "laterPlatforms": ["macOS"],
+  "nextReviewTrigger": "H0 exit-gate review or any change to provider, event, permission, or platform contracts",
+  "statusDefinitions": {
+    "discovery": "Problem and success measure are being defined.",
+    "planned": "Accepted scope with dependencies and acceptance criteria.",
+    "in_progress": "Implementation is active and the item is not yet through every gate.",
+    "blocked": "No meaningful progress is possible until a named dependency changes.",
+    "beta": "User journey works but release-quality gates remain.",
+    "done": "Every acceptance criterion passes on the target platforms.",
+    "deferred": "Intentionally postponed with the reason kept visible."
+  },
+  "focus": [
+    "H0-004",
+    "H0-010",
+    "H1-005",
+    "H1-006"
+  ],
+  "principles": [
+    "Local-first ownership",
+    "Provider freedom",
+    "Visible agency",
+    "Safe autonomy",
+    "Recoverable by design",
+    "Protocol over parsing",
+    "Capability-driven interface",
+    "Cross-platform from the first commit"
+  ],
+  "phases": [
+    {
+      "id": "H0",
+      "title": "Product foundation",
+      "statusLabel": "In progress",
+      "lane": "now",
+      "timeframe": "Current",
+      "outcome": "A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates.",
+      "exitGates": [
+        "The Svelte interface contains no provider transport or orchestration business logic.",
+        "The Rust core runs in tests without Tauri.",
+        "A recorded fake session replays into the complete task interface.",
+        "Database projections rebuild deterministically.",
+        "Clean Windows and Linux builds pass.",
+        "Architecture changes have decision records and roadmap change notes."
+      ],
+      "items": [
+        {
+          "id": "H0-001",
+          "title": "Product language and interactive preview",
+          "outcome": "A user can understand Kiln's task, provider, review, and roadmap model before repository execution exists.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["Web", "Windows", "Linux"],
+          "dependencies": [],
+          "acceptanceCriteria": [
+            "Workbench, provider onboarding, diff review, and roadmap views are interactive.",
+            "Web production build, lint, and rendered-output tests pass.",
+            "No starter branding or unused starter surface remains."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in the initial Kiln foundation."
+        },
+        {
+          "id": "H0-002",
+          "title": "Typed provider boundary",
+          "outcome": "OpenAI, Anthropic, and a local compatible server share one normalized Rust command surface.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": [],
+          "acceptanceCriteria": [
+            "OpenAI Responses, Anthropic Messages, and local Chat Completions adapters compile.",
+            "Connection tests and normalized chat responses use typed request and error models.",
+            "Recorded parsing, URL-safety, and secret-redaction tests pass for all provider types."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Non-streaming foundation complete; streaming remains H1."
+        },
+        {
+          "id": "H0-003",
+          "title": "Product specification and architecture",
+          "outcome": "Product boundaries, safety guarantees, platform claims, and non-goals are explicit and reviewable.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["All"],
+          "dependencies": [],
+          "acceptanceCriteria": [
+            "The product specification defines launch workflows and permission semantics.",
+            "The architecture separates interface, orchestration, providers, workspace host, and storage.",
+            "Local-first control-plane decisions are recorded."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 0.1."
+        },
+        {
+          "id": "H0-004",
+          "title": "Reproducible Svelte/Tauri desktop build",
+          "outcome": "A contributor can install, check, build, and launch the native shell from a clean checkout.",
+          "status": "in_progress",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": [],
+          "acceptanceCriteria": [
+            "JavaScript dependencies are locked.",
+            "Svelte type checking and production build pass.",
+            "Tauri launches the generated frontend through the typed Rust commands.",
+            "A clean Windows build passes; a clean Linux build passes in CI."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Revision 1.0 adds the desktop lockfile, aligns Svelte's Vite plugin with Vite 8, migrates minification to Oxc, and proves a clean Windows install, type check, and production build. The first hosted Linux build remains."
+        },
+        {
+          "id": "H0-005",
+          "title": "Living roadmap automation",
+          "outcome": "Repository documentation and both in-product roadmap views are generated from one reviewed source.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["All"],
+          "dependencies": ["H0-003"],
+          "acceptanceCriteria": [
+            "Stable roadmap data is stored in product/roadmap.json.",
+            "ROADMAP.md and web/desktop summary modules are generated from that source.",
+            "A freshness check fails when generated outputs drift."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Added in revision 0.2 to eliminate roadmap duplication."
+        },
+        {
+          "id": "H0-006",
+          "title": "Extract the UI-independent Rust core",
+          "outcome": "Provider, task, policy, and event behavior can run and test without Tauri.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux", "macOS-ready"],
+          "dependencies": ["H0-002"],
+          "acceptanceCriteria": [
+            "kiln-core, kiln-providers, and kiln-platform crates have no Tauri dependency.",
+            "kiln-tauri contains transport and application wiring only.",
+            "Provider fixture tests run against the extracted crates."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 0.3 with a Cargo workspace, Tauri-free core/provider/platform crates, and 15 passing extracted-crate tests."
+        },
+        {
+          "id": "H0-007",
+          "title": "Versioned command and event contract",
+          "outcome": "Every task transition has a stable, serializable, causally ordered representation.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["All"],
+          "dependencies": ["H0-006"],
+          "acceptanceCriteria": [
+            "Project, workspace, task, session, turn, approval, tool, artifact, and receipt events are versioned.",
+            "Per-task sequence and causation identifiers are defined.",
+            "Unknown additive event fields are tolerated and breaking versions fail explicitly.",
+            "The Svelte interface consumes application events rather than provider events."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 0.4: Rust and TypeScript contracts, deterministic Svelte projections, provider-result normalization, compatibility tests, contract documentation, and ADR 0002."
+        },
+        {
+          "id": "H0-008",
+          "title": "SQLite event log and deterministic projections",
+          "outcome": "Task state survives restart and can be rebuilt from an auditable local history.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H0-007"],
+          "acceptanceCriteria": [
+            "Events append transactionally with schema and migration versions.",
+            "Secrets and raw environment snapshots are forbidden from durable payloads.",
+            "Projection rebuilds produce stable snapshot fixtures.",
+            "Migration forward and rollback tests pass."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 0.6 with transactional SQLite append/replay, migrations, secret rejection, close/reopen recovery, versioned projection snapshots, Tauri application-data initialization, typed storage commands, durable-before-visible Svelte batches, and startup restore."
+        },
+        {
+          "id": "H0-009",
+          "title": "Recorded fake-session replay",
+          "outcome": "The complete task interface can be developed and tested without a live provider.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H0-007", "H0-008"],
+          "acceptanceCriteria": [
+            "A fixture includes streaming text, a plan, a proposed tool, an approval, output, a diff, tests, and a completion receipt.",
+            "Replay produces the expected task, activity, and inspector projections.",
+            "Repeated replay is deterministic."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 0.7 with one generated 25-event recording, rich Rust and TypeScript projection snapshots, visible desktop artifacts, and deterministic replay tests."
+        },
+        {
+          "id": "H0-010",
+          "title": "Windows and Linux continuous integration",
+          "outcome": "Cross-platform claims are proved on every change.",
+          "status": "in_progress",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H0-004", "H0-006"],
+          "acceptanceCriteria": [
+            "Rust format, check, unit tests, and frontend freshness/build checks run on both platforms.",
+            "Fixtures cover spaces, Unicode paths, line endings, and process cancellation.",
+            "Release-blocking failures are visible before merge."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Revision 0.7 adds a Windows/Ubuntu quality matrix and executable path, Unicode, line-ending, and cancellation fixtures. Revision 1.0 supplies the desktop lockfile; hosted runs and required-check configuration remain."
+        }
+      ]
+    },
+    {
+      "id": "H1",
+      "title": "Connected vertical slice",
+      "statusLabel": "In progress",
+      "lane": "now",
+      "timeframe": "Parallel with H0 infrastructure gates",
+      "outcome": "One genuine repository task completes safely through each required provider type.",
+      "exitGates": [
+        "The same fixture task completes through OpenAI, Anthropic, and a local compatible server.",
+        "Tool input and results appear in causal order.",
+        "Cancellation stops generation and execution within a documented bound.",
+        "Denied tools produce no side effect.",
+        "Every changed file is inspectable before acceptance.",
+        "Credentials never appear in events, logs, exports, or crash reports."
+      ],
+      "items": [
+        {
+          "id": "H1-001",
+          "title": "Normalized streaming and cancellation",
+          "outcome": "Users see responsive provider output and can stop a turn reliably.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H0-007", "H0-008"],
+          "acceptanceCriteria": [
+            "All three adapters emit normalized message deltas and completion events.",
+            "Cancellation propagates through provider HTTP and active tool jobs.",
+            "Late provider events cannot mutate a cancelled turn."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 0.9 with normalized SSE adapters, a shared cancellation domain, ordered Tauri channels, durable desktop deltas, a stop control, late-event guards, fixtures, and ADR 0005."
+        },
+        {
+          "id": "H1-002",
+          "title": "Open and remember a Git repository",
+          "outcome": "A user can select a real project and start a task against a truthful workspace state.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H0-006", "H0-008"],
+          "acceptanceCriteria": [
+            "Repository identity, root, branch, status, and project defaults are projected.",
+            "Invalid or unsafe repository selections fail with actionable messages.",
+            "Remembered projects contain no credentials."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 1.0 with a Tauri-free bounded Git inspector, typed project/workspace projections, immutable remembered-project events, live startup revalidation, actionable selection errors, credential-free defaults, a desktop project picker, and cross-language tests."
+        },
+        {
+          "id": "H1-003",
+          "title": "Read-only file and search tools",
+          "outcome": "An agent can inspect a repository through typed, visible, policy-checked tools.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H1-002", "H1-004"],
+          "acceptanceCriteria": [
+            "File read, file search, and text search use typed schemas.",
+            "Paths are constrained to the selected workspace.",
+            "Tool proposals and results appear in the ordered activity timeline."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 1.1 with tagged Rust and TypeScript schemas, canonical workspace containment, Git-aware bounded search, central tool-and-path policy checks, cancellation, transient raw results, durable activity summaries, desktop inspection controls, tests, and ADR 0006."
+        },
+        {
+          "id": "H1-004",
+          "title": "Central permission engine",
+          "outcome": "Every agent action is evaluated as allow, ask, or deny against a named resource.",
+          "status": "done",
+          "priority": "P0",
+          "platforms": ["All"],
+          "dependencies": ["H0-007"],
+          "acceptanceCriteria": [
+            "Policies scope tool, command, path, network host, and extension resources.",
+            "Allow-once decisions never persist silently.",
+            "Denied actions execute no provider, filesystem, process, or network side effect.",
+            "Extensions cannot bypass policy evaluation."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Completed in revision 0.8 with typed resource and origin rules, deterministic precedence, ephemeral allow-once grants, guarded execution, extension enforcement, tests, and ADR 0004."
+        },
+        {
+          "id": "H1-005",
+          "title": "File editing and real diff review",
+          "outcome": "Users can inspect every agent change before accepting it.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H1-003", "H1-004"],
+          "acceptanceCriteria": [
+            "Writes are workspace-bound, policy-checked, and recorded as artifacts.",
+            "Unified diff shows real changed files and hunks.",
+            "An interrupted write cannot leave an unreported partial state."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Replaces the current fixture diff."
+        },
+        {
+          "id": "H1-006",
+          "title": "OS credential storage and redaction pipeline",
+          "outcome": "Provider credentials survive safely without entering application data.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H0-006"],
+          "acceptanceCriteria": [
+            "Credential Manager and libsecret implementations store opaque profile references.",
+            "Secret values are zeroized where practical.",
+            "Provider errors, diagnostics, exports, and crash reports pass central redaction tests."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Moved ahead of broader provider onboarding polish."
+        },
+        {
+          "id": "H1-007",
+          "title": "Provider diagnostics and capability discovery",
+          "outcome": "A connection test explains exactly which behaviors a model endpoint supports.",
+          "status": "planned",
+          "priority": "P1",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H1-001"],
+          "acceptanceCriteria": [
+            "Reachability, authentication, model discovery, streaming, and tool compatibility report separately.",
+            "The UI follows advertised capabilities instead of provider-name conditions.",
+            "Cloud gateway policy is explicit and warns before sending credentials to a custom origin."
+          ],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Includes the unresolved custom cloud-endpoint policy."
+        }
+      ]
+    },
+    {
+      "id": "H2",
+      "title": "Reliable task workspace",
+      "statusLabel": "Planned",
+      "lane": "next",
+      "timeframe": "After the H1 slice",
+      "outcome": "Kiln supports concurrent daily work that survives restarts and preserves user changes.",
+      "exitGates": [
+        "Two tasks can change one repository without sharing workspace or event state.",
+        "Restart during a turn produces a truthful recoverable task.",
+        "Restoring one checkpoint preserves unrelated user work.",
+        "Child processes and worktrees clean up after cancellation and restart.",
+        "Completed tasks retain verification evidence and a finalized diff."
+      ],
+      "items": [
+        {
+          "id": "H2-001",
+          "title": "Per-task Git worktrees and branches",
+          "outcome": "Concurrent task changes remain isolated without claiming a security sandbox.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H1-002", "H1-005"],
+          "acceptanceCriteria": ["Create, recover, inspect, and clean task worktrees without deleting unrelated user data."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Retained after direct-workspace H1 validation."
+        },
+        {
+          "id": "H2-002",
+          "title": "Concurrent task supervision",
+          "outcome": "Multiple tasks run without interleaving events, approvals, output, or paths.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H2-001", "H0-007"],
+          "acceptanceCriteria": ["Ordered per-task queues and job ownership pass concurrency and fault-injection tests."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No scope change."
+        },
+        {
+          "id": "H2-003",
+          "title": "Checkpoints, retry, fork, and targeted restore",
+          "outcome": "Users can recover choices without rewriting unrelated work.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H2-001", "H0-008"],
+          "acceptanceCriteria": ["Checkpoint restore is auditable, scoped, and preserves unrelated user changes."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No scope change."
+        },
+        {
+          "id": "H2-004",
+          "title": "Crash-resumable sessions",
+          "outcome": "Application or adapter failure never fabricates completion or loses the durable task state.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H0-008", "H1-001"],
+          "acceptanceCriteria": ["Fault-injection restart tests produce explicit interrupted, recoverable, or completed receipts."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No scope change."
+        },
+        {
+          "id": "H2-005",
+          "title": "Terminal and verification profiles",
+          "outcome": "Tasks run explicit project checks with inspectable command output.",
+          "status": "planned",
+          "priority": "P1",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H1-004"],
+          "acceptanceCriteria": ["Shell selection, quoting, PTY lifecycle, process-tree cancellation, and verification receipts pass platform fixtures."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No scope change."
+        },
+        {
+          "id": "H2-006",
+          "title": "Context compaction and usage visibility",
+          "outcome": "Long sessions remain understandable and within provider limits.",
+          "status": "planned",
+          "priority": "P1",
+          "platforms": ["All"],
+          "dependencies": ["H0-008", "H1-001"],
+          "acceptanceCriteria": ["Compaction boundaries are auditable and usage information degrades honestly by provider capability."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No scope change."
+        }
+      ]
+    },
+    {
+      "id": "H3",
+      "title": "Open agent ecosystem",
+      "statusLabel": "Planned",
+      "lane": "later",
+      "timeframe": "After workspace reliability",
+      "outcome": "Existing agents and external tools operate through Kiln's task, event, and permission surfaces.",
+      "exitGates": [
+        "Goose and OpenCode sessions run through the same task interface.",
+        "Unsupported capabilities disable with an explanation.",
+        "MCP tools pass through the central permission engine.",
+        "A failed adapter restarts without restarting Kiln.",
+        "Exports can omit secrets and sensitive content."
+      ],
+      "items": [
+        {
+          "id": "H3-001",
+          "title": "MCP stdio and HTTP clients",
+          "outcome": "Users can add typed tools without weakening central policy.",
+          "status": "planned",
+          "priority": "P1",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H1-004", "H2-002"],
+          "acceptanceCriteria": ["MCP lifecycle, health, schemas, calls, and approvals are represented as domain events."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Begins only after the native permission path is proven."
+        },
+        {
+          "id": "H3-002",
+          "title": "ACP client and capability negotiation",
+          "outcome": "Kiln can supervise compatible agents without provider-specific UI integrations.",
+          "status": "planned",
+          "priority": "P1",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H2-002"],
+          "acceptanceCriteria": ["Sessions, plans, tools, files, terminals, cancellation, and receipts map into Kiln events."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Delayed until cancellation and recovery contracts are stable."
+        },
+        {
+          "id": "H3-003",
+          "title": "Goose and OpenCode profiles",
+          "outcome": "Users can connect established agent runtimes through guided configuration.",
+          "status": "planned",
+          "priority": "P1",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H3-002"],
+          "acceptanceCriteria": ["One Goose and one OpenCode fixture complete through the common task interface."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No bespoke task UI is permitted."
+        },
+        {
+          "id": "H3-004",
+          "title": "Sanitized session import and export",
+          "outcome": "Users can move or share task evidence with explicit content controls.",
+          "status": "planned",
+          "priority": "P2",
+          "platforms": ["All"],
+          "dependencies": ["H0-008", "H1-006"],
+          "acceptanceCriteria": ["A preview can omit secrets, source, command output, and provider payloads before export."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No scope change."
+        }
+      ]
+    },
+    {
+      "id": "H4",
+      "title": "Windows and Linux beta",
+      "statusLabel": "Planned",
+      "lane": "later",
+      "timeframe": "After ecosystem hardening",
+      "outcome": "A polished, installable daily driver for regular personal use.",
+      "exitGates": [
+        "All core flows are keyboard accessible.",
+        "A 10,000-event session meets the agreed responsiveness budget.",
+        "A 24-hour task leaks neither processes nor unbounded memory.",
+        "Upgrade and rollback preserve sessions and policies.",
+        "Windows and Linux release smoke suites pass."
+      ],
+      "items": [
+        {
+          "id": "H4-001",
+          "title": "Installers, signing, and safe updates",
+          "outcome": "Users can install, update, roll back, and remove Kiln predictably.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H0-010", "H2-004"],
+          "acceptanceCriteria": ["Signed release artifacts and update/rollback smoke tests pass on launch platforms."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No scope change."
+        },
+        {
+          "id": "H4-002",
+          "title": "Keyboard, accessibility, and reduced motion",
+          "outcome": "Core journeys remain operable without a pointer or animation.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["All"],
+          "dependencies": ["H2-005"],
+          "acceptanceCriteria": ["Core workflows meet the documented WCAG 2.2 AA interaction expectations."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "No scope change."
+        },
+        {
+          "id": "H4-003",
+          "title": "Long-session performance and diagnostics",
+          "outcome": "Large and long-running tasks stay responsive and explain failures safely.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H2-004", "H2-006"],
+          "acceptanceCriteria": ["Performance fixtures and redaction-preview diagnostic bundles pass release budgets."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Combined related performance and support work."
+        },
+        {
+          "id": "H4-004",
+          "title": "Usage, cost, backup, and retention controls",
+          "outcome": "Users understand provider consumption and control local history.",
+          "status": "planned",
+          "priority": "P1",
+          "platforms": ["All"],
+          "dependencies": ["H2-006", "H0-008"],
+          "acceptanceCriteria": ["Usage degrades honestly and backup/retention operations are explicit and recoverable."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Combined lifecycle controls into one release outcome."
+        }
+      ]
+    },
+    {
+      "id": "H5",
+      "title": "Secure autonomy and remote operation",
+      "statusLabel": "Deferred",
+      "lane": "later",
+      "timeframe": "Deferred until the local product is stable",
+      "outcome": "Long-running tasks gain stronger containment and remote supervision without weakening the local trust model.",
+      "exitGates": [
+        "Filesystem, network, CPU, memory, and execution-time limits are enforced and visible.",
+        "Remote pairing expires, revokes, and reconnects safely.",
+        "Security documentation distinguishes guarantees from best-effort controls."
+      ],
+      "items": [
+        {
+          "id": "H5-001",
+          "title": "Platform process and filesystem containment",
+          "outcome": "Autonomous jobs execute within documented OS-specific limits.",
+          "status": "deferred",
+          "priority": "P1",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H4-003"],
+          "acceptanceCriteria": ["Containment boundaries and escape limitations have a dedicated security review."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Deferred until local execution is reliable."
+        },
+        {
+          "id": "H5-002",
+          "title": "Headless daemon and authenticated pairing",
+          "outcome": "A remote client can supervise without direct filesystem access.",
+          "status": "deferred",
+          "priority": "P2",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H5-001"],
+          "acceptanceCriteria": ["Pairing, revocation, reconnect, and least-privilege APIs pass a separate threat model."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Deferred with secure autonomy."
+        }
+      ]
+    },
+    {
+      "id": "H6",
+      "title": "macOS release",
+      "statusLabel": "Later",
+      "lane": "later",
+      "timeframe": "After launch-platform parity",
+      "outcome": "Supported daily-driver workflows reach signed and notarized macOS parity.",
+      "exitGates": [
+        "Provider, Git, terminal, permission, credential, update, and recovery suites pass.",
+        "Packages are signed and notarized.",
+        "Apple Silicon is verified on physical hardware."
+      ],
+      "items": [
+        {
+          "id": "H6-001",
+          "title": "Native macOS platform adapter and packaging",
+          "outcome": "Kiln behaves natively across shell, PTY, paths, Keychain, signing, and updates.",
+          "status": "deferred",
+          "priority": "P1",
+          "platforms": ["macOS"],
+          "dependencies": ["H4-001", "H4-003"],
+          "acceptanceCriteria": ["Physical-hardware release gates pass and remaining differences appear in-product."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Architecture-compatible now; support claim remains deferred."
+        }
+      ]
+    },
+    {
+      "id": "H7",
+      "title": "Advanced orchestration",
+      "statusLabel": "Discovery",
+      "lane": "later",
+      "timeframe": "Exploratory",
+      "outcome": "Kiln differentiates through understandable, policy-aware coordination rather than agent count.",
+      "exitGates": [
+        "Every candidate has a user problem, success measure, and security model before commitment."
+      ],
+      "items": [
+        {
+          "id": "H7-001",
+          "title": "Parallel specialist task graphs",
+          "outcome": "Users can understand dependencies, ownership, and evidence across collaborating agents.",
+          "status": "discovery",
+          "priority": "P2",
+          "platforms": ["All"],
+          "dependencies": ["H3-002", "H4-003"],
+          "acceptanceCriteria": ["Discovery defines when specialist graphs outperform one recoverable task loop."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Not committed."
+        },
+        {
+          "id": "H7-002",
+          "title": "Model comparison and evaluation fixtures",
+          "outcome": "Users can compare models on reproducible tasks without duplicating side effects.",
+          "status": "discovery",
+          "priority": "P2",
+          "platforms": ["All"],
+          "dependencies": ["H0-009", "H2-001"],
+          "acceptanceCriteria": ["Discovery defines isolation, evaluation measures, and cost controls."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Not committed."
+        },
+        {
+          "id": "H7-003",
+          "title": "Reusable recipes and policy-aware review",
+          "outcome": "Repeated engineering workflows become inspectable recipes rather than hidden automation.",
+          "status": "discovery",
+          "priority": "P2",
+          "platforms": ["All"],
+          "dependencies": ["H2-003", "H3-001"],
+          "acceptanceCriteria": ["Discovery defines authorship, trust, versioning, and rollback semantics."],
+          "lastReviewed": "2026-07-28",
+          "changeNote": "Not committed."
+        }
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "id": "RISK-001",
+      "severity": "high",
+      "status": "mitigating",
+      "risk": "The desktop frontend is not yet proven from a clean dependency install.",
+      "mitigation": "Revision 1.0 commits desktop/package-lock.json and proves a clean Windows install, check, and build. Confirm the first hosted Ubuntu build before closing the risk."
+    },
+    {
+      "id": "RISK-002",
+      "severity": "medium",
+      "status": "mitigated",
+      "risk": "Future orchestration work could regress into the desktop transport layer.",
+      "mitigation": "The workspace now isolates core, providers, platform, and Git workspace contracts from kiln-tauri; keep Tauri-free dependency checks in CI."
+    },
+    {
+      "id": "RISK-003",
+      "severity": "high",
+      "status": "open",
+      "risk": "Credentials and upstream payloads may leak without OS storage and centralized redaction.",
+      "mitigation": "Keep credentials ephemeral and complete H1-006 before durable provider profiles."
+    },
+    {
+      "id": "RISK-004",
+      "severity": "medium",
+      "status": "mitigating",
+      "risk": "Provider defaults and roadmap content can drift across Rust, web, desktop, and documentation.",
+      "mitigation": "H0-005 establishes generated roadmap outputs; provider-contract generation remains H1-007."
+    },
+    {
+      "id": "RISK-005",
+      "severity": "medium",
+      "status": "mitigating",
+      "risk": "Windows works locally while Linux behavior remains an architectural claim.",
+      "mitigation": "H0-010 now defines Windows and Ubuntu jobs plus platform fixtures; confirm the first hosted Linux run and require both checks."
+    },
+    {
+      "id": "RISK-006",
+      "severity": "medium",
+      "status": "mitigated",
+      "risk": "Concurrent writers or corrupt event order could make restart projections untruthful.",
+      "mitigation": "H0-008 uses one transactional SQLite writer, database uniqueness constraints, durable-tail checks, and validated ordered replay."
+    },
+    {
+      "id": "RISK-007",
+      "severity": "high",
+      "status": "mitigated",
+      "risk": "Provider bytes arriving after cancellation could rewrite a terminal turn or leave background work active.",
+      "mitigation": "H1-001 shares cancellation across HTTP and jobs, gives cancellation race priority, stops the channel at one terminal batch, and blocks late mutations in both projectors."
+    }
+  ],
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "status": "accepted",
+      "decision": "Use a local-first Rust control plane with a Svelte/Tauri desktop client.",
+      "reviewAt": "H2 exit",
+      "reason": "The core must support desktop and future headless transports without duplicating orchestration."
+    },
+    {
+      "id": "DEC-002",
+      "status": "open",
+      "decision": "Whether cloud providers may use custom gateway origins.",
+      "reviewAt": "Before H1-007",
+      "reason": "Gateway flexibility must not make credential destination ambiguous."
+    },
+    {
+      "id": "DEC-003",
+      "status": "open",
+      "decision": "Whether Rig becomes the native loop implementation or remains architectural inspiration.",
+      "reviewAt": "H2 exit",
+      "reason": "Adoption should follow a stable event, tool, and provider contract."
+    },
+    {
+      "id": "DEC-004",
+      "status": "open",
+      "decision": "Which Linux package formats receive first-class support.",
+      "reviewAt": "Before H4-001",
+      "reason": "Packaging investment should follow tested user distribution needs."
+    },
+    {
+      "id": "DEC-005",
+      "status": "accepted",
+      "decision": "Use versioned, causally ordered application events as the interface and replay boundary.",
+      "reviewAt": "H2 exit",
+      "reason": "Provider payloads and transport behavior must not become the product state model."
+    },
+    {
+      "id": "DEC-006",
+      "status": "accepted",
+      "decision": "Use SQLite as an immutable local event log with one H0 writer.",
+      "reviewAt": "H2 performance review",
+      "reason": "Kiln needs transactional restart and replay without requiring an external service."
+    },
+    {
+      "id": "DEC-007",
+      "status": "accepted",
+      "decision": "Route every native and extension action through one guarded permission engine.",
+      "reviewAt": "H3 extension exit",
+      "reason": "Allow, ask, deny, and ephemeral approval semantics must not vary by transport or tool source."
+    },
+    {
+      "id": "DEC-008",
+      "status": "accepted",
+      "decision": "Normalize provider SSE behind ordered Tauri channels and one shared cancellation domain.",
+      "reviewAt": "H2 crash-resume review",
+      "reason": "Streaming must remain provider-independent, durable before display, and immune to late cancellation races."
+    }
+  ],
+  "metrics": [
+    "Median time from opening a repository to starting a task",
+    "Successful completion rate by provider profile",
+    "Approval prompts per completed task",
+    "Cancellation success rate and latency",
+    "Crash-recovery success rate",
+    "Completed tasks with verification evidence",
+    "Provider normalization errors per 1,000 events",
+    "User-restored changes per completed task",
+    "Installer and update success by platform"
+  ],
+  "changeLog": [
+    {
+      "date": "2026-07-28",
+      "revision": "1.0",
+      "summary": "Completed real Git project selection and removed the desktop dependency-install blocker.",
+      "changes": [
+        "Added the Tauri-free kiln-workspace crate with canonical-root discovery, path-derived identity, branch and commit projection, porcelain-v2 status parsing, ownership checks, disabled hooks and filesystem monitors, bounded output, and a 15-second inspection limit.",
+        "Persisted project_opened and workspace_ready events before activation, derived recent projects from immutable SQLite history, and revalidated remembered roots at startup without storing credentials or remote URLs.",
+        "Added typed Rust and TypeScript project projections plus a desktop picker that shows branch, truthful working-tree state, recent availability, and actionable invalid-selection errors while blocking turns without a repository.",
+        "Generated desktop/package-lock.json, aligned the official Svelte Vite plugin with Vite 8, migrated production minification to Oxc, and passed a clean Windows npm ci, Svelte check, and desktop build.",
+        "Added real temporary-Git, storage, transport, projection, and credential-shape tests plus the project/workspace guide; read-only file and search tools are next."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.9",
+      "summary": "Completed normalized provider streaming and cancellation from HTTP frames to durable desktop projection.",
+      "changes": [
+        "Added OpenAI Responses, Anthropic Messages, and compatible local SSE parsers with normalized delta, completion, and cancellation events.",
+        "Added a shared cancellation domain that drops active HTTP and job futures and gives cancellation priority over queued late frames.",
+        "Streamed normalized events through a typed Tauri channel, converted them to application events, and committed each batch before Svelte projection.",
+        "Added a desktop stop control, duplicate-turn protection, terminal channel handling, and late-mutation guards in Rust and TypeScript.",
+        "Added protocol, framing, cancellation, registry, bridge, and projection tests plus the streaming guide and ADR 0005; repository selection is next."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.8",
+      "summary": "Completed the central permission engine before introducing repository tools.",
+      "changes": [
+        "Added typed tool, command, path, network-host, and extension resources with task, project, provider-profile, and global policy targets.",
+        "Defined deterministic target, origin, resource, and deny/ask/allow precedence with an ask-by-default fallback.",
+        "Kept allow-once grants outside serializable rules and consumed them at the guarded execution boundary.",
+        "Proved denied native and extension-origin actions invoke no side-effect closure, documented the trust boundary, and accepted ADR 0004.",
+        "Started H1-001 streaming and cancellation while H0 desktop dependency and hosted CI gates remain open."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.7",
+      "summary": "Completed the recorded-session integration gate and established the Windows/Linux quality workflow.",
+      "changes": [
+        "Added one canonical 25-event fake session covering streaming, planning, approval, tool output, a diff, tests, and a final receipt.",
+        "Generated the Svelte recording from JSON and verified deterministic task and inspector projections against a Rust snapshot.",
+        "Added a Windows and Ubuntu GitHub Actions matrix with web, Svelte, Rust, freshness, lint, and build gates.",
+        "Added executable fixtures for spaces, Unicode paths, mixed line endings, and process cancellation; H0-010 remains active until hosted runs and required checks are confirmed.",
+        "Marked H0-004 blocked because the approval service still rejects the registry request needed to create the desktop lockfile."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.6",
+      "summary": "Completed restart-safe SQLite integration from Tauri startup through the Svelte projection.",
+      "changes": [
+        "Initialized kiln.db under the Tauri application-data directory and exposed typed append/load commands.",
+        "Added a durable desktop history coordinator that commits event batches before projection and resets its sequencer after failed writes.",
+        "Restored the ordered task stream and deterministic projection before enabling the desktop composer.",
+        "Added durability coordinator tests and marked H0-008 complete; recorded fake-session replay and CI are next."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.5",
+      "summary": "Started durable SQLite event storage behind a Tauri-free crate.",
+      "changes": [
+        "Added storage schema version 1 with indexed immutable event envelopes and explicit migration history.",
+        "Implemented one-stream transactional append, durable-tail sequence checks, and validated replay.",
+        "Added persistence-time credential-marker rejection plus atomicity, rollback, migration, file reopen, and projection-snapshot tests.",
+        "Documented the physical schema, recovery rules, safety boundary, and ADR 0003; H0-008 remains in progress for desktop append/startup integration."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.4",
+      "summary": "Completed the versioned application-event boundary from Rust through the Svelte projection.",
+      "changes": [
+        "Added message lifecycle events and stable camel-case transport fields to the Rust contract.",
+        "Replaced direct Svelte conversation and activity mutation with deterministic ordered-event projections.",
+        "Converted provider success and failure results into message and receipt events at the desktop bridge.",
+        "Added cross-language contract checks, replay tests, complete contract documentation, and ADR 0002."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.3",
+      "summary": "Extracted the Tauri-free Rust foundation and started the versioned application event contract.",
+      "changes": [
+        "Created a Cargo workspace with kiln-core, kiln-providers, kiln-platform, and a thin kiln-tauri shell.",
+        "Moved provider fixtures and normalized contracts out of the desktop transport.",
+        "Added versioned command and event envelopes with causal stream ordering and forward-compatible field handling.",
+        "Marked H0-006 done and H0-007 in progress after workspace and isolated-core tests passed."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.2",
+      "summary": "Converted the roadmap into a generated source of truth and incorporated the foundation review.",
+      "changes": [
+        "Prioritized a reproducible desktop build, Rust core extraction, event contract, SQLite replay, and CI.",
+        "Required permissions before repository tools and streaming before ecosystem integrations.",
+        "Added risk, decision, metric, and change-history records.",
+        "Synchronized web and desktop roadmap summaries from the structured source."
+      ]
+    },
+    {
+      "date": "2026-07-28",
+      "revision": "0.1",
+      "summary": "Established the initial H0–H7 product roadmap.",
+      "changes": [
+        "Set Windows and Linux as launch platforms.",
+        "Deferred macOS support and secure remote operation until release gates are met."
+      ]
+    }
+  ]
+}
