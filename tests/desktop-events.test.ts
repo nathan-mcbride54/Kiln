@@ -304,6 +304,15 @@ test("ignores late provider mutations after a cancellation receipt", () => {
       data: { messageId: "assistant-1", delta: "Visible" },
     }),
     stream.append({
+      type: "approval_requested",
+      data: {
+        approvalId: "approval:cancelled",
+        action: "write_file",
+        resource: "src/lib.rs",
+        reason: "Apply one atomic edit.",
+      },
+    }),
+    stream.append({
       type: "turn_receipt",
       data: {
         turnId: "cancelled-turn",
@@ -330,7 +339,8 @@ test("ignores late provider mutations after a cancellation receipt", () => {
   assert.equal(projection.status, "cancelled");
   assert.equal(projection.messages[0].content, "Visible");
   assert.equal(projection.messages[0].model, "streaming");
-  assert.equal(projection.lastSequence, 5);
+  assert.equal(projection.pendingApproval, undefined);
+  assert.equal(projection.lastSequence, 6);
 });
 
 test("normalizes desktop stream messages into application event batches", () => {

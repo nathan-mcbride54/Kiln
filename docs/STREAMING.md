@@ -23,9 +23,12 @@ existing durable-before-visible history coordinator.
 
 H1-008 adds a separate transient tool-turn path. `ToolTurnCodec` normalizes
 fragmented provider calls and keeps provider handles and raw arguments out of
-IPC and the event log. The current desktop still assigns live turn causality;
-the pending Rust orchestrator will take ownership of both chat and tool steps
-before H1 can close. See [Provider tool turns](TOOL_TURNS.md).
+IPC and the event log. The Tauri-free Rust task loop now owns durable chat and
+tool-step causality, approval ordering, workspace execution, cancellation, and
+the terminal receipt. The current desktop still uses the earlier chat-only
+bridge until live provider sessions and the Tauri command connect that runner.
+See [Provider tool turns](TOOL_TURNS.md) and
+[Task orchestration](ORCHESTRATION.md).
 
 Tauri channels are used instead of global events because they preserve order
 and are designed for streamed data. See the official
@@ -65,4 +68,6 @@ split Unicode and CRLF framing, active-job cancellation, cancellation winning
 over queued late chunks, Tauri turn cleanup, stream-to-application mapping, and
 the cancelled-turn mutation barrier in both projectors. Tool-turn fixtures also
 prove fragmented cross-provider normalization, tool-only completion, strict
-schema parsing, continuation encoding, and bounded failure behavior.
+schema parsing, continuation encoding, and bounded failure behavior. Task-loop
+fixtures drive those normalized calls through real version-checked repository
+reads and writes, approval decisions, cancellation, and durable replay.

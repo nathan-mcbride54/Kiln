@@ -121,10 +121,14 @@ rewrite old event meaning.
 ## Provider boundary
 
 Provider adapters return normalized stream events inside `kiln-providers`.
-The desktop bridge adds application identity and converts deltas, completion,
-cancellation, or a structured error into the application vocabulary. Tauri
-commits each event batch to SQLite before `App.svelte` renders the deterministic
-projection.
+`kiln-orchestrator` now adds internal task, message, tool, and approval
+identity; commits causal transitions to SQLite; routes tools through policy;
+and closes the task with one receipt. Provider handles and raw tool results
+remain transient.
+
+The live desktop chat bridge still performs the earlier text-only conversion.
+H1-008's remaining adapter work will route that command through the Rust
+orchestrator before `App.svelte` renders the deterministic projection.
 
 At startup, Tauri reloads the same stream from SQLite and Svelte rebuilds the
 same projection. `message_delta` events are followed by `message_completed` and

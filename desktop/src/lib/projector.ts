@@ -502,6 +502,7 @@ function applyPayload(
         {
           ...current,
           activeTurnId: undefined,
+          pendingApproval: undefined,
           running: false,
           status:
             payload.data.outcome === "completed"

@@ -2114,6 +2114,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kiln-orchestrator"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kiln-core",
+ "kiln-platform",
+ "kiln-providers",
+ "kiln-storage",
+ "kiln-workspace",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+]
+
+[[package]]
 name = "kiln-platform"
 version = "0.1.0"
 dependencies = [
