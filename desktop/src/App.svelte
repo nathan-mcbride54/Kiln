@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import {
     cancelTurn,
+    canonicalProviderOrigin,
     deleteProviderCredential,
     executeVisibleRepositoryTool,
     executeTurnStreaming,
@@ -14,6 +15,7 @@
     persistApplicationEvents,
     saveProviderCredential,
     testProviderConnection,
+    usableProviderCredential,
   } from "./lib/bridge";
   import {
     type ApplicationEvent,
@@ -31,6 +33,8 @@
   } from "./lib/roadmap.generated";
   import type {
     ChatMessage,
+    ConnectionProbe,
+    ConnectionProbeKind,
     ProjectDefaults,
     ProjectSnapshot,
     ProviderCapabilities,
@@ -43,7 +47,31 @@
   type View = "workbench" | "connections" | "roadmap";
   type InspectorTab = "changes" | "activity";
   type TaskState = "working" | "review" | "queued" | "done";
+  type BooleanCapability =
+    | "customBaseUrl"
+    | "modelDiscovery"
+    | "streaming"
+    | "toolCalling"
+    | "systemMessages"
+    | "temperature"
+    | "customHeaders";
   const taskStreamId = "task:recorded-replay";
+  const diagnosticKinds: ConnectionProbeKind[] = [
+    "reachability",
+    "authentication",
+    "model_discovery",
+    "streaming",
+    "tool_compatibility",
+  ];
+  const capabilityRows: { label: string; key: BooleanCapability }[] = [
+    { label: "Custom endpoint", key: "customBaseUrl" },
+    { label: "Model discovery", key: "modelDiscovery" },
+    { label: "Streaming", key: "streaming" },
+    { label: "Tool calling", key: "toolCalling" },
+    { label: "System messages", key: "systemMessages" },
+    { label: "Temperature control", key: "temperature" },
+    { label: "Custom headers", key: "customHeaders" },
+  ];
 
   interface Task {
     id: string;
@@ -159,6 +187,7 @@
   let inspectorTab: InspectorTab = "changes";
   let draft = "";
   let capabilities: ProviderCapabilities[] = [];
+  let credentialProfiles: ProviderCredentialProfile[] = [];
   let credentialBusy: ProviderId | undefined;
   let toast = "";
   let mobileSidebarOpen = false;
@@ -203,13 +232,12 @@
 
     capabilities =
       providerResult.status === "fulfilled" ? providerResult.value : [];
+    if (capabilities.length) {
+      providers = hydrateProviderContracts(providers, capabilities);
+    }
     if (credentialResult.status === "fulfilled") {
-      for (const profile of credentialResult.value) {
-        patchProvider(profile.provider, {
-          credentialRef: profile.credentialRef,
-          credentialBackend: profile.backend,
-        });
-      }
+      credentialProfiles = credentialResult.value;
+      applyCredentialProfiles();
     }
 
     try {
@@ -244,6 +272,183 @@
     providers = providers.map((provider) =>
       provider.id === id ? { ...provider, ...patch } : provider,
     );
+  }
+
+  function hydrateProviderContracts(
+    current: ProviderConfig[],
+    contracts: ProviderCapabilities[],
+  ): ProviderConfig[] {
+    return contracts.flatMap((contract) => {
+      const provider = current.find((candidate) => candidate.id === contract.provider);
+      if (!provider) return [];
+      return [{
+        ...provider,
+        name: contract.displayName,
+        protocol: protocolLabel(contract),
+        baseUrl: contract.defaultBaseUrl,
+        apiKeyRequired: contract.apiKeyRequired,
+        capabilities: contract,
+        diagnostics: undefined,
+      }];
+    });
+  }
+
+  function protocolLabel(contract: ProviderCapabilities): string {
+    if (contract.protocol === "open_ai_responses") return "Responses API";
+    if (contract.protocol === "anthropic_messages") return "Messages API";
+    return "OpenAI-compatible";
+  }
+
+  function capabilityFor(
+    provider: ProviderConfig,
+  ): ProviderCapabilities | undefined {
+    return provider.capabilities ??
+      capabilities.find((contract) => contract.provider === provider.id);
+  }
+
+  function supportsCapability(
+    provider: ProviderConfig,
+    capability: BooleanCapability,
+  ): boolean {
+    return Boolean(capabilityFor(provider)?.[capability]);
+  }
+
+  function applyCredentialProfiles(): void {
+    providers = providers.map((provider) => {
+      const profile = credentialProfileFor(provider);
+      return {
+        ...provider,
+        credentialRef: profile?.credentialRef,
+        credentialBackend: profile?.backend,
+        credentialOrigin: profile?.origin,
+        credentialBindingState: profile?.bindingState,
+      };
+    });
+  }
+
+  function credentialProfileFor(
+    provider: ProviderConfig,
+  ): ProviderCredentialProfile | undefined {
+    const candidates = credentialProfiles.filter(
+      (profile) => profile.provider === provider.id,
+    );
+    const configuredOrigin = canonicalProviderOrigin(provider.baseUrl);
+    return candidates.find((profile) =>
+      profile.bindingState === "bound" &&
+      Boolean(configuredOrigin) &&
+      canonicalProviderOrigin(profile.origin ?? "") === configuredOrigin
+    ) ??
+      candidates.find((profile) =>
+        profile.bindingState === "bound" && !profile.origin
+      ) ??
+      candidates.find((profile) => profile.bindingState === "rebind_required") ??
+      candidates[0];
+  }
+
+  function updateProviderBaseUrl(id: ProviderId, baseUrl: string): void {
+    const provider = providers.find((candidate) => candidate.id === id);
+    if (!provider) return;
+    const updated = { ...provider, baseUrl };
+    const matchingProfile = credentialProfileFor(updated);
+    patchProvider(id, {
+      baseUrl,
+      credentialRef: matchingProfile?.credentialRef ?? provider.credentialRef,
+      credentialBackend:
+        matchingProfile?.backend ?? provider.credentialBackend,
+      credentialOrigin: matchingProfile?.origin ?? provider.credentialOrigin,
+      credentialBindingState:
+        matchingProfile?.bindingState ?? provider.credentialBindingState,
+      state: "untested",
+      latency: undefined,
+      message: undefined,
+      diagnostics: undefined,
+    });
+  }
+
+  function updateProviderModel(id: ProviderId, model: string): void {
+    patchProvider(id, {
+      model,
+      state: "untested",
+      latency: undefined,
+      message: undefined,
+      diagnostics: undefined,
+    });
+  }
+
+  function destinationWarning(provider: ProviderConfig): {
+    from: string;
+    to: string;
+    legacy: boolean;
+  } | undefined {
+    if (!provider.credentialRef) return undefined;
+    const configuredOrigin = canonicalProviderOrigin(provider.baseUrl);
+    const destination = configuredOrigin ?? "an invalid destination";
+    if (provider.credentialBindingState === "rebind_required") {
+      return {
+        from: provider.credentialOrigin ?? "unverified legacy profile",
+        to: destination,
+        legacy: true,
+      };
+    }
+    if (!supportsCapability(provider, "customBaseUrl")) return undefined;
+    const credentialOrigin = provider.credentialOrigin
+      ? canonicalProviderOrigin(provider.credentialOrigin) ??
+        provider.credentialOrigin.trim()
+      : undefined;
+    if (!credentialOrigin || credentialOrigin === configuredOrigin) {
+      return undefined;
+    }
+    return {
+      from: credentialOrigin,
+      to: destination,
+      legacy: false,
+    };
+  }
+
+  function credentialBadge(provider: ProviderConfig): string {
+    if (!provider.credentialRef) return "unsaved";
+    return usableProviderCredential(provider) ? "stored" : "rebind";
+  }
+
+  function diagnosticProbe(
+    provider: ProviderConfig,
+    kind: ConnectionProbeKind,
+  ): ConnectionProbe | undefined {
+    return provider.diagnostics?.probes.find((probe) => probe.kind === kind);
+  }
+
+  function diagnosticLabel(kind: ConnectionProbeKind): string {
+    if (kind === "model_discovery") return "Model discovery";
+    if (kind === "tool_compatibility") return "Tool compatibility";
+    return `${kind[0].toUpperCase()}${kind.slice(1)}`;
+  }
+
+  function probeStatusLabel(probe?: ConnectionProbe): string {
+    if (!probe) return "Not tested";
+    if (probe.status === "passed") return "Passed";
+    if (probe.status === "failed") return "Failed";
+    if (probe.status === "unsupported") return "Unsupported";
+    return "Skipped";
+  }
+
+  function connectionSummary(response: ProviderConfig["diagnostics"]): string {
+    if (!response) return "";
+    const passed = response.probes.filter(
+      (probe) => probe.status === "passed",
+    ).length;
+    if (response.overall === "ready") return "All provider checks passed.";
+    if (response.overall === "degraded") {
+      return `Connected with ${passed} of ${response.probes.length} checks passing.`;
+    }
+    return "The provider is unavailable; review the failed checks.";
+  }
+
+  function reachabilityLatency(
+    response: ProviderConfig["diagnostics"],
+  ): number | undefined {
+    return response?.probes.find(
+      (probe) => probe.kind === "reachability",
+    )?.latencyMs;
   }
 
   function selectProject(project: ProjectSnapshot): void {
@@ -352,29 +557,36 @@
     const provider = providers.find((item) => item.id === id);
     if (!provider) return;
 
-    if (provider.apiKeyRequired && !provider.credentialRef) {
-      patchProvider(id, {
-        state: "error",
-        message: "Save a key securely before testing.",
-      });
-      return;
-    }
-
-    patchProvider(id, { state: "testing", message: "Testing the route…" });
+    patchProvider(id, {
+      state: "testing",
+      latency: undefined,
+      message: "Testing five provider behaviors…",
+      diagnostics: undefined,
+    });
 
     try {
       const response = await testProviderConnection(provider);
       patchProvider(id, {
-        state: response.connected ? "ready" : "error",
-        latency: response.latencyMs,
-        message: response.message,
+        state:
+          response.overall === "ready"
+            ? "ready"
+            : response.overall === "degraded"
+              ? "degraded"
+              : "error",
+        latency: reachabilityLatency(response),
+        message: connectionSummary(response),
+        diagnostics: response,
       });
-      toast = response.connected
-        ? `${provider.name} is ready`
-        : `${provider.name} did not connect`;
+      toast =
+        response.overall === "ready"
+          ? `${provider.name} is ready`
+          : response.overall === "degraded"
+            ? `${provider.name} connected with limits`
+            : `${provider.name} is unavailable`;
     } catch (error) {
       patchProvider(id, {
         state: "error",
+        diagnostics: undefined,
         message: error instanceof Error ? error.message : "Connection failed.",
       });
       toast = `Couldn’t reach ${provider.name}`;
@@ -396,12 +608,26 @@
 
     credentialBusy = id;
     try {
-      const profile = await saveProviderCredential(id, provider.apiKey);
+      const profile = await saveProviderCredential(
+        id,
+        provider.apiKey,
+        provider.baseUrl,
+      );
+      credentialProfiles = [
+        ...credentialProfiles.filter(
+          (candidate) => candidate.provider !== profile.provider,
+        ),
+        profile,
+      ];
       patchProvider(id, {
         apiKey: "",
         credentialRef: profile.credentialRef,
         credentialBackend: profile.backend,
+        credentialOrigin: profile.origin,
+        credentialBindingState: profile.bindingState,
         state: "untested",
+        latency: undefined,
+        diagnostics: undefined,
         message: `Saved in ${credentialBackendLabel(profile)}.`,
       });
       toast = `${provider.name} credential saved securely`;
@@ -430,17 +656,27 @@
       provider: id,
       credentialRef: provider.credentialRef,
       backend: provider.credentialBackend,
+      origin: provider.credentialOrigin,
+      bindingState:
+        provider.credentialBindingState ?? "rebind_required",
     };
     try {
       await deleteProviderCredential(profile);
+      credentialProfiles = credentialProfiles.filter(
+        (candidate) => candidate.credentialRef !== profile.credentialRef,
+      );
       patchProvider(id, {
         apiKey: "",
         credentialRef: undefined,
         credentialBackend: undefined,
+        credentialOrigin: undefined,
+        credentialBindingState: undefined,
         state: "untested",
         latency: undefined,
+        diagnostics: undefined,
         message: "Stored credential removed.",
       });
+      applyCredentialProfiles();
       toast = `${provider.name} credential removed`;
     } catch (error) {
       patchProvider(id, {
@@ -469,9 +705,16 @@
       return;
     }
     if (!content || running || submitting || !historyReady) return;
-    if (activeProvider.apiKeyRequired && !activeProvider.credentialRef) {
+    const activeCredentialRef = usableProviderCredential(activeProvider);
+    const activeContract = capabilityFor(activeProvider);
+    if (
+      (activeContract?.apiKeyRequired ?? activeProvider.apiKeyRequired) &&
+      !activeCredentialRef
+    ) {
       activeView = "connections";
-      toast = `Save a ${activeProvider.name} credential before starting a turn.`;
+      toast = activeProvider.credentialRef
+        ? `Rebind the ${activeProvider.name} credential to this destination before starting a turn.`
+        : `Save a ${activeProvider.name} credential before starting a turn.`;
       window.setTimeout(() => (toast = ""), 4200);
       return;
     }
@@ -514,7 +757,7 @@
         await executeTurnStreaming(
           {
             provider: activeProvider.id,
-            credentialRef: activeProvider.credentialRef,
+            credentialRef: activeCredentialRef,
             baseUrl: activeProvider.baseUrl || undefined,
             model: activeProvider.model,
             messages: requestMessages,
@@ -698,6 +941,7 @@
 
   function stateLabel(state: ProviderConfig["state"]): string {
     if (state === "ready") return "Ready";
+    if (state === "degraded") return "Limited";
     if (state === "testing") return "Testing";
     if (state === "error") return "Needs attention";
     return "Not tested";
@@ -1270,9 +1514,12 @@
 
         <div class="provider-grid">
           {#each providers as provider}
+            {@const contract = capabilityFor(provider)}
+            {@const warning = destinationWarning(provider)}
             <form
               class="provider-card"
               class:ready={provider.state === "ready"}
+              class:degraded={provider.state === "degraded"}
               class:error={provider.state === "error"}
               style={`--provider: ${provider.accent}`}
               onsubmit={(event) => {
@@ -1300,7 +1547,9 @@
                 <label>
                   <span>
                     API key
-                    {#if !provider.apiKeyRequired}<small>optional</small>{/if}
+                    {#if !(contract?.apiKeyRequired ?? provider.apiKeyRequired)}
+                      <small>optional</small>
+                    {/if}
                   </span>
                   <div class="secret-input">
                     <input
@@ -1310,35 +1559,42 @@
                       value={provider.apiKey}
                       placeholder={provider.credentialRef
                         ? "Enter a replacement key"
-                        : provider.id === "openai"
-                          ? "sk-proj-…"
-                          : provider.id === "anthropic"
-                            ? "sk-ant-…"
-                            : "Optional bearer token"}
+                        : (contract?.apiKeyRequired ?? provider.apiKeyRequired)
+                          ? "Enter provider API key"
+                          : "Optional bearer token"}
                       oninput={(event) =>
                         patchProvider(provider.id, {
                           apiKey: event.currentTarget.value,
                           state: "untested",
+                          latency: undefined,
                           message: undefined,
+                          diagnostics: undefined,
                         })}
                     />
-                    <span>{provider.credentialRef ? "stored" : "unsaved"}</span>
+                    <span>{credentialBadge(provider)}</span>
                   </div>
                 </label>
 
                 <label>
-                  <span>{provider.id === "local" ? "Base URL" : "API origin"}</span>
+                  <span>
+                    {contract?.customBaseUrl ? "Base URL" : "Fixed API URL"}
+                  </span>
                   <input
                     class="mono-input"
                     type="url"
                     value={provider.baseUrl}
-                    disabled={provider.id !== "local"}
+                    disabled={!contract?.customBaseUrl}
                     oninput={(event) =>
-                      patchProvider(provider.id, {
-                        baseUrl: event.currentTarget.value,
-                        state: "untested",
-                      })}
+                      updateProviderBaseUrl(
+                        provider.id,
+                        event.currentTarget.value,
+                      )}
                   />
+                  <small class="field-note">
+                    {contract?.customBaseUrl
+                      ? "Credentials bind to this exact origin."
+                      : "Pinned by the first-party provider adapter."}
+                  </small>
                 </label>
 
                 <label>
@@ -1348,12 +1604,62 @@
                     type="text"
                     value={provider.model}
                     spellcheck="false"
+                    list={`models-${provider.id}`}
                     oninput={(event) =>
-                      patchProvider(provider.id, {
-                        model: event.currentTarget.value,
-                      })}
+                      updateProviderModel(
+                        provider.id,
+                        event.currentTarget.value,
+                      )}
                   />
+                  <datalist id={`models-${provider.id}`}>
+                    {#each provider.diagnostics?.models ?? [] as model}
+                      <option value={model}></option>
+                    {/each}
+                  </datalist>
                 </label>
+              </div>
+
+              {#if warning}
+                <div class="destination-warning" role="alert">
+                  <strong>
+                    {warning.legacy
+                      ? "Credential needs a destination"
+                      : "Credential destination changed"}
+                  </strong>
+                  <span>{warning.from} → {warning.to}</span>
+                  <p>
+                    The stored key will not be sent there. Save a credential to
+                    bind it to this origin, or remove the older profile.
+                  </p>
+                </div>
+              {/if}
+
+              <div
+                class="diagnostics-panel"
+                aria-label={`${provider.name} diagnostics`}
+                aria-live="polite"
+              >
+                <div class="diagnostics-heading">
+                  <strong>Live behavior checks</strong>
+                  <span>Streaming and tools send small model requests that may use a few tokens.</span>
+                </div>
+                <div class="probe-list">
+                  {#each diagnosticKinds as kind}
+                    {@const probe = diagnosticProbe(provider, kind)}
+                    <div class="probe-row">
+                      <span class="probe-name">{diagnosticLabel(kind)}</span>
+                      <span class={`probe-status ${probe?.status ?? "not-tested"}`}>
+                        {probeStatusLabel(probe)}
+                      </span>
+                      <span class="probe-message">
+                        {probe?.message ?? "Run a connection test to verify this behavior."}
+                      </span>
+                      {#if probe?.latencyMs !== undefined}
+                        <strong>{probe.latencyMs} ms</strong>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
               </div>
 
               <div class="provider-card-footer">
@@ -1362,14 +1668,16 @@
                     <span>{provider.message}</span>
                   {:else}
                     <span>
-                      {provider.id === "local"
-                        ? "A stored key is optional for local routes"
+                      {usableProviderCredential(provider)
+                        ? "Credential is stored and bound to this destination"
                         : provider.credentialRef
-                          ? "Credential is stored by the operating system"
-                          : "No credential is stored yet"}
+                          ? "Stored credential is not bound to this destination"
+                          : (contract?.apiKeyRequired ?? provider.apiKeyRequired)
+                            ? "No credential is stored yet"
+                            : "A stored credential is optional for this route"}
                     </span>
                   {/if}
-                  {#if provider.latency}
+                  {#if provider.latency !== undefined}
                     <strong>{provider.latency} ms</strong>
                   {/if}
                 </div>
@@ -1392,7 +1700,9 @@
                   >
                     {credentialBusy === provider.id
                       ? "Saving…"
-                      : provider.credentialRef
+                      : warning
+                        ? "Save for this origin"
+                        : provider.credentialRef
                         ? "Replace key"
                         : "Save securely"}
                   </button>
@@ -1427,18 +1737,12 @@
                 <span>{provider.name}</span>
               {/each}
             </div>
-            {#each [
-              ["Native protocol", true, true, true],
-              ["Custom endpoint", false, false, true],
-              ["Model discovery", true, true, true],
-              ["System messages", true, true, true],
-              ["Streaming roadmap", true, true, true],
-            ] as row}
+            {#each capabilityRows as row}
               <div class="cap-row">
-                <span>{row[0]}</span>
-                {#each row.slice(1) as supported}
-                  <span class:supported={supported === true}>
-                    {supported === true ? "✓" : "—"}
+                <span>{row.label}</span>
+                {#each providers as provider}
+                  <span class:supported={supportsCapability(provider, row.key)}>
+                    {supportsCapability(provider, row.key) ? "✓" : "—"}
                   </span>
                 {/each}
               </div>

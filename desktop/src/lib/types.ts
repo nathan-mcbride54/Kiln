@@ -1,14 +1,22 @@
 export type ProviderId = "openai" | "anthropic" | "local";
-export type ProviderState = "ready" | "untested" | "testing" | "error";
+export type ProviderState =
+  | "ready"
+  | "degraded"
+  | "untested"
+  | "testing"
+  | "error";
 export type ChatRole = "system" | "developer" | "user" | "assistant";
 export type CredentialBackend =
   | "windows_credential_manager"
   | "linux_secret_service";
+export type CredentialBindingState = "bound" | "rebind_required";
 
 export interface ProviderCredentialProfile {
   provider: ProviderId;
   credentialRef: string;
   backend: CredentialBackend;
+  origin?: string;
+  bindingState: CredentialBindingState;
 }
 
 export interface ProviderConfig {
@@ -22,11 +30,15 @@ export interface ProviderConfig {
   apiKey: string;
   credentialRef?: string;
   credentialBackend?: CredentialBackend;
+  credentialOrigin?: string;
+  credentialBindingState?: CredentialBindingState;
   apiKeyRequired: boolean;
   state: ProviderState;
   accent: string;
   latency?: number;
   message?: string;
+  capabilities?: ProviderCapabilities;
+  diagnostics?: ConnectionTestResponse;
 }
 
 export interface ProviderCapabilities {
@@ -42,16 +54,38 @@ export interface ProviderCapabilities {
   customHeaders: boolean;
   modelDiscovery: boolean;
   streaming: boolean;
+  toolCalling: boolean;
   systemMessages: boolean;
   temperature: boolean;
 }
 
+export type ConnectionProbeKind =
+  | "reachability"
+  | "authentication"
+  | "model_discovery"
+  | "streaming"
+  | "tool_compatibility";
+
+export type ConnectionProbeStatus =
+  | "passed"
+  | "failed"
+  | "unsupported"
+  | "skipped";
+
+export interface ConnectionProbe {
+  kind: ConnectionProbeKind;
+  status: ConnectionProbeStatus;
+  latencyMs?: number;
+  message: string;
+}
+
 export interface ConnectionTestResponse {
   provider: ProviderId;
-  connected: boolean;
-  latencyMs: number;
-  discoveredModels?: number;
-  message: string;
+  origin: string;
+  model?: string;
+  overall: "ready" | "degraded" | "unavailable";
+  models: string[];
+  probes: ConnectionProbe[];
 }
 
 export interface ChatMessage {

@@ -79,6 +79,8 @@ keys and remote URLs are never part of remembered project metadata.
 - [Recorded provider-free session](docs/RECORDED_SESSION.md)
 - [Central permission engine](docs/PERMISSIONS.md)
 - [Provider streaming and cancellation](docs/STREAMING.md)
+- [Credential storage and redaction](docs/CREDENTIALS.md)
+- [Provider diagnostics](docs/PROVIDER_DIAGNOSTICS.md)
 - [Git projects and direct workspaces](docs/PROJECTS.md)
 - [Repository inspection tools](docs/REPOSITORY_TOOLS.md)
 - [Safe workspace editing](docs/SAFE_EDITING.md)
@@ -91,6 +93,8 @@ keys and remote URLs are never part of remembered project metadata.
 - [Ordered provider-streaming decision](docs/decisions/0005-ordered-provider-streaming.md)
 - [Bounded repository-inspection decision](docs/decisions/0006-bounded-repository-inspection.md)
 - [Native-confirmed atomic-editing decision](docs/decisions/0007-native-confirmed-atomic-editing.md)
+- [OS credential and redaction decision](docs/decisions/0008-os-credential-references-and-central-redaction.md)
+- [Origin-bound provider-profile decision](docs/decisions/0009-origin-bound-provider-profiles.md)
 
 The roadmap is generated from `product/roadmap.json`, which carries stable item
 IDs, dependencies, acceptance gates, risks, decisions, and change history.

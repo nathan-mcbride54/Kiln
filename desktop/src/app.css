@@ -1848,7 +1848,7 @@ kbd {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 396px;
+  min-height: 650px;
   flex-direction: column;
   padding: 17px;
   overflow: hidden;
@@ -1886,6 +1886,10 @@ kbd {
 
 .provider-card.error {
   border-color: rgba(224, 128, 111, 0.34);
+}
+
+.provider-card.degraded {
+  border-color: rgba(201, 209, 138, 0.32);
 }
 
 .provider-card-head,
@@ -1971,6 +1975,15 @@ kbd {
   animation: provider-pulse 900ms ease-in-out infinite alternate;
 }
 
+.provider-status.degraded {
+  border-color: rgba(201, 209, 138, 0.25);
+  color: var(--moss);
+}
+
+.provider-status.degraded i {
+  background: var(--moss);
+}
+
 .provider-status.error {
   border-color: rgba(224, 128, 111, 0.25);
   color: var(--danger);
@@ -2021,6 +2034,12 @@ kbd {
   color: #55584f;
   font-size: 6px;
   font-weight: 600;
+}
+
+.form-fields .field-note {
+  color: #62665b;
+  font-size: 6.5px;
+  line-height: 1.35;
 }
 
 .form-fields input {
@@ -2079,6 +2098,138 @@ kbd {
   text-transform: uppercase;
   transform: translateY(-50%);
   pointer-events: none;
+}
+
+.destination-warning {
+  display: grid;
+  margin-top: 11px;
+  padding: 9px 10px;
+  gap: 4px;
+  border: 1px solid rgba(224, 172, 111, 0.25);
+  border-radius: 7px;
+  background: rgba(224, 172, 111, 0.045);
+}
+
+.destination-warning strong {
+  color: #e0ac6f;
+  font-size: 7.5px;
+  font-weight: 690;
+}
+
+.destination-warning > span {
+  overflow: hidden;
+  color: #c9b397;
+  font-family: var(--mono);
+  font-size: 6.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.destination-warning p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 6.5px;
+  line-height: 1.45;
+}
+
+.diagnostics-panel {
+  margin-top: 11px;
+  overflow: hidden;
+  border: 1px solid #2d3029;
+  border-radius: 8px;
+  background: rgba(15, 16, 13, 0.72);
+}
+
+.diagnostics-heading {
+  display: flex;
+  min-height: 35px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  gap: 9px;
+  border-bottom: 1px solid #292c26;
+}
+
+.diagnostics-heading strong {
+  color: var(--ink-2);
+  font-size: 7.5px;
+  font-weight: 680;
+}
+
+.diagnostics-heading span {
+  max-width: 145px;
+  color: #62665b;
+  font-size: 6px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.probe-list {
+  display: grid;
+}
+
+.probe-row {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.8fr) auto;
+  min-width: 0;
+  padding: 7px 9px;
+  gap: 3px 8px;
+  border-bottom: 1px solid rgba(41, 44, 38, 0.72);
+}
+
+.probe-row:last-child {
+  border-bottom: 0;
+}
+
+.probe-name {
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 7px;
+  font-weight: 640;
+}
+
+.probe-status {
+  justify-self: end;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.probe-status.passed {
+  color: var(--mint);
+}
+
+.probe-status.failed {
+  color: var(--danger);
+}
+
+.probe-status.unsupported {
+  color: #d7a093;
+}
+
+.probe-status.skipped,
+.probe-status.not-tested {
+  color: #62665b;
+}
+
+.probe-message {
+  min-width: 0;
+  overflow: hidden;
+  color: #71756a;
+  font-size: 6.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.probe-row > strong {
+  align-self: end;
+  justify-self: end;
+  color: var(--provider);
+  font-family: var(--mono);
+  font-size: 6px;
+  font-weight: 610;
 }
 
 .provider-card-footer {

@@ -41,8 +41,10 @@ pub use tools::{
     MAX_WRITE_BYTES,
 };
 pub use types::{
-    ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, ConnectionTestRequest,
-    ConnectionTestResponse, CredentialBackendKind, CredentialProfileRef, CredentialReferenceError,
-    CredentialSaveRequest, ProviderCapabilities, ProviderCredentialProfile, ProviderCredentials,
-    ProviderKind, ProviderProtocol, SecretString, TokenUsage,
+    ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, ConnectionProbe,
+    ConnectionProbeKind, ConnectionProbeStatus, ConnectionTestOverall, ConnectionTestRequest,
+    ConnectionTestResponse, CredentialBackendKind, CredentialBindingState, CredentialProfileRef,
+    CredentialReferenceError, CredentialSaveRequest, ProviderCapabilities,
+    ProviderCredentialProfile, ProviderCredentials, ProviderKind, ProviderOrigin,
+    ProviderOriginError, ProviderProtocol, SecretString, TokenUsage,
 };

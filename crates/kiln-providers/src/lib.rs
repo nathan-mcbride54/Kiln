@@ -1,19 +1,22 @@
 mod anthropic;
+mod diagnostics;
 mod error;
 mod local;
 mod openai;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::{Stream, StreamExt};
 use kiln_core::{
     ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, CommandError, ConnectionTestRequest,
-    ConnectionTestResponse, ProviderCapabilities, ProviderCredentials, ProviderKind, TokenUsage,
+    ConnectionTestResponse, ProviderCapabilities, ProviderCredentials, ProviderKind,
+    ProviderOrigin, TokenUsage,
 };
 use kiln_platform::CancellationToken;
 use reqwest::{
     header::{HeaderName, HeaderValue, CONTENT_TYPE},
+    redirect::Policy,
     Client, RequestBuilder, StatusCode, Url,
 };
 use serde_json::Value;
@@ -42,6 +45,9 @@ impl ProviderService {
         let http = Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(120))
+            // Never let a secret-bearing request follow a redirect to a
+            // destination that was not explicitly approved.
+            .redirect(Policy::none())
             .user_agent(concat!("Kiln/", env!("CARGO_PKG_VERSION")))
             .build()
             .expect("the platform TLS and HTTP client should initialize");
@@ -62,6 +68,28 @@ impl ProviderService {
         test_connection(&self.http, request)
             .await
             .map_err(|error| error.into_command(provider, &redactor))
+    }
+
+    /// Resolves the exact origin that may receive a stored credential.
+    ///
+    /// Provider HTTP requests reuse the same parser, so a frontend cannot
+    /// normalize one destination for the vault and send to another.
+    pub fn credential_origin(
+        &self,
+        provider: ProviderKind,
+        base_url: Option<&str>,
+    ) -> Result<ProviderOrigin, CommandError> {
+        let redactor = kiln_core::SensitiveDataRedactor::default();
+        let destination = resolve_destination(base_url, &adapter(provider).capabilities())
+            .map_err(|error| error.into_command(provider, &redactor))?;
+        if !destination.origin.is_safe_for_credentials() {
+            return Err(ProviderError::InvalidConfiguration(
+                "Credentials require HTTPS unless the compatible endpoint is on this device."
+                    .to_owned(),
+            )
+            .into_command(provider, &redactor));
+        }
+        Ok(destination.origin)
     }
 
     pub async fn send_chat(&self, request: &ChatRequest) -> Result<ChatResponse, CommandError> {
@@ -157,13 +185,18 @@ trait ProviderAdapter: Sync {
         request: &ChatRequest,
     ) -> Result<RequestBuilder, ProviderError> {
         validate_chat_request(request)?;
-        let base_url = resolve_base_url(request.base_url.as_deref(), &self.capabilities())?;
-        let endpoint = endpoint(&base_url, self.chat_path());
+        let destination = resolve_destination(request.base_url.as_deref(), &self.capabilities())?;
+        validate_credential_destination(&request.credentials, &destination.origin)?;
+        let endpoint = endpoint(&destination.base_url, self.chat_path());
         let builder = client
             .post(endpoint)
             .header(CONTENT_TYPE, "application/json")
             .json(&self.stream_payload(request)?);
-        let builder = apply_custom_headers(builder, &request.credentials)?;
+        let builder = apply_custom_headers(
+            builder,
+            &request.credentials,
+            self.capabilities().custom_headers,
+        )?;
         self.apply_provider_headers(builder, &request.credentials)
     }
 
@@ -173,14 +206,19 @@ trait ProviderAdapter: Sync {
         request: &ChatRequest,
     ) -> Result<ChatResponse, ProviderError> {
         validate_chat_request(request)?;
-        let base_url = resolve_base_url(request.base_url.as_deref(), &self.capabilities())?;
-        let endpoint = endpoint(&base_url, self.chat_path());
+        let destination = resolve_destination(request.base_url.as_deref(), &self.capabilities())?;
+        validate_credential_destination(&request.credentials, &destination.origin)?;
+        let endpoint = endpoint(&destination.base_url, self.chat_path());
         let payload = self.chat_payload(request)?;
         let builder = client
             .post(endpoint)
             .header(CONTENT_TYPE, "application/json")
             .json(&payload);
-        let builder = apply_custom_headers(builder, &request.credentials)?;
+        let builder = apply_custom_headers(
+            builder,
+            &request.credentials,
+            self.capabilities().custom_headers,
+        )?;
         let builder = self.apply_provider_headers(builder, &request.credentials)?;
 
         let response = builder
@@ -195,49 +233,6 @@ trait ProviderAdapter: Sync {
 
         ensure_success(status, &body, self.kind())?;
         self.parse_chat_response(&body, &request.model)
-    }
-
-    async fn test_connection(
-        &self,
-        client: &Client,
-        request: &ConnectionTestRequest,
-    ) -> Result<ConnectionTestResponse, ProviderError> {
-        let base_url = resolve_base_url(request.base_url.as_deref(), &self.capabilities())?;
-        let endpoint = endpoint(&base_url, self.models_path());
-        let builder = client
-            .get(endpoint)
-            .timeout(Duration::from_secs(15))
-            .header(CONTENT_TYPE, "application/json");
-        let builder = apply_custom_headers(builder, &request.credentials)?;
-        let builder = self.apply_provider_headers(builder, &request.credentials)?;
-
-        let started = Instant::now();
-        let response = builder
-            .send()
-            .await
-            .map_err(|error| network_error(error, self.kind()))?;
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|error| network_error(error, self.kind()))?;
-        ensure_success(status, &body, self.kind())?;
-
-        let discovered_models = serde_json::from_str::<Value>(&body)
-            .ok()
-            .and_then(|value| model_count(&value));
-
-        Ok(ConnectionTestResponse {
-            provider: self.kind(),
-            connected: true,
-            latency_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
-            discovered_models,
-            message: match discovered_models {
-                Some(1) => "Connected and discovered 1 model.".to_owned(),
-                Some(count) => format!("Connected and discovered {count} models."),
-                None => "Connected. This server did not return a standard model list.".to_owned(),
-            },
-        })
     }
 }
 
@@ -552,9 +547,7 @@ async fn test_connection(
     client: &Client,
     request: &ConnectionTestRequest,
 ) -> Result<ConnectionTestResponse, ProviderError> {
-    adapter(request.provider)
-        .test_connection(client, request)
-        .await
+    diagnostics::test_connection(client, adapter(request.provider), request).await
 }
 
 fn adapter(kind: ProviderKind) -> &'static dyn ProviderAdapter {
@@ -610,10 +603,16 @@ fn validate_chat_request(request: &ChatRequest) -> Result<(), ProviderError> {
     Ok(())
 }
 
-fn resolve_base_url(
+#[derive(Debug, Clone)]
+struct ResolvedProviderDestination {
+    base_url: String,
+    origin: ProviderOrigin,
+}
+
+fn resolve_destination(
     provided: Option<&str>,
     capabilities: &ProviderCapabilities,
-) -> Result<String, ProviderError> {
+) -> Result<ResolvedProviderDestination, ProviderError> {
     let candidate = provided
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(capabilities.default_base_url)
@@ -640,7 +639,24 @@ fn resolve_base_url(
         ));
     }
 
-    Ok(parsed.as_str().trim_end_matches('/').to_owned())
+    let base_url = parsed.as_str().trim_end_matches('/').to_owned();
+    if !capabilities.custom_base_url {
+        let expected = Url::parse(capabilities.default_base_url)
+            .expect("built-in provider base URLs must be valid");
+        if base_url != expected.as_str().trim_end_matches('/') {
+            return Err(ProviderError::InvalidConfiguration(format!(
+                "{} connections are pinned to the official API origin.",
+                capabilities.display_name
+            )));
+        }
+    }
+
+    let origin = ProviderOrigin::from_base_url(&base_url).map_err(|_| {
+        ProviderError::InvalidConfiguration(
+            "The provider base URL does not have a valid HTTP origin.".to_owned(),
+        )
+    })?;
+    Ok(ResolvedProviderDestination { base_url, origin })
 }
 
 fn endpoint(base_url: &str, path: &str) -> String {
@@ -649,6 +665,20 @@ fn endpoint(base_url: &str, path: &str) -> String {
         base_url.trim_end_matches('/'),
         path.trim_start_matches('/')
     )
+}
+
+fn validate_credential_destination(
+    credentials: &ProviderCredentials,
+    origin: &ProviderOrigin,
+) -> Result<(), ProviderError> {
+    let carries_secret = credentials.api_key.is_some() || !credentials.custom_headers.is_empty();
+    if carries_secret && !origin.is_safe_for_credentials() {
+        return Err(ProviderError::InvalidConfiguration(
+            "Credentials require HTTPS unless the compatible endpoint is on this device."
+                .to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 fn require_api_key<'a>(
@@ -680,7 +710,13 @@ fn sensitive_header(value: &str) -> Result<HeaderValue, ProviderError> {
 fn apply_custom_headers(
     mut builder: RequestBuilder,
     credentials: &ProviderCredentials,
+    allowed: bool,
 ) -> Result<RequestBuilder, ProviderError> {
+    if !allowed && !credentials.custom_headers.is_empty() {
+        return Err(ProviderError::InvalidConfiguration(
+            "Custom headers are available only for compatible custom endpoints.".to_owned(),
+        ));
+    }
     for (name, value) in &credentials.custom_headers {
         let normalized = name.to_ascii_lowercase();
         if matches!(
@@ -777,20 +813,15 @@ fn provider_label(provider: ProviderKind) -> &'static str {
     }
 }
 
-fn model_count(value: &Value) -> Option<usize> {
-    value
-        .get("data")
-        .and_then(Value::as_array)
-        .or_else(|| value.get("models").and_then(Value::as_array))
-        .or_else(|| value.as_array())
-        .map(Vec::len)
-}
-
 #[cfg(test)]
 mod tests {
     use std::{
+        io::{Read, Write},
+        net::TcpListener,
         pin::Pin,
         task::{Context, Poll},
+        thread,
+        time::Duration,
     };
 
     use super::*;
@@ -812,7 +843,7 @@ mod tests {
 
     #[test]
     fn base_url_rejects_embedded_credentials() {
-        let error = resolve_base_url(
+        let error = resolve_destination(
             Some("http://secret:password@localhost:1234/v1"),
             &LOCAL.capabilities(),
         )
@@ -829,10 +860,67 @@ mod tests {
     }
 
     #[test]
-    fn counts_common_model_list_shapes() {
-        assert_eq!(model_count(&serde_json::json!({"data": [{}, {}]})), Some(2));
-        assert_eq!(model_count(&serde_json::json!({"models": [{}]})), Some(1));
-        assert_eq!(model_count(&serde_json::json!([{}, {}, {}])), Some(3));
+    fn cloud_destinations_reject_non_official_base_urls() {
+        for capabilities in [OPENAI.capabilities(), ANTHROPIC.capabilities()] {
+            let error = resolve_destination(Some("https://gateway.example.test/v1"), &capabilities)
+                .expect_err("cloud providers must remain pinned");
+            assert!(matches!(error, ProviderError::InvalidConfiguration(_)));
+
+            let official =
+                resolve_destination(Some(capabilities.default_base_url), &capabilities).unwrap();
+            assert_eq!(
+                official.origin.as_str(),
+                ProviderKind::fixed_official_origin(capabilities.provider)
+                    .unwrap()
+                    .as_str()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn credentialed_diagnostics_never_follow_redirects() {
+        let target = TcpListener::bind("127.0.0.1:0").unwrap();
+        target.set_nonblocking(true).unwrap();
+        let target_url = format!("http://{}/captured", target.local_addr().unwrap());
+
+        let redirect = TcpListener::bind("127.0.0.1:0").unwrap();
+        let redirect_address = redirect.local_addr().unwrap();
+        let responder = thread::spawn(move || {
+            let (mut stream, _) = redirect.accept().unwrap();
+            let mut request = [0_u8; 2048];
+            let _ = stream.read(&mut request);
+            write!(
+                stream,
+                "HTTP/1.1 302 Found\r\nLocation: {target_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+
+        let service = ProviderService::new();
+        let report = service
+            .test_connection(&ConnectionTestRequest {
+                provider: ProviderKind::Local,
+                credentials: ProviderCredentials {
+                    api_key: Some(kiln_core::SecretString::new("redirect-secret")),
+                    ..ProviderCredentials::default()
+                },
+                credential_ref: None,
+                base_url: Some(format!("http://{redirect_address}/v1")),
+                model: None,
+            })
+            .await
+            .unwrap();
+        responder.join().unwrap();
+
+        assert_eq!(
+            report.probes[0].http_status,
+            Some(StatusCode::FOUND.as_u16())
+        );
+        thread::sleep(Duration::from_millis(25));
+        assert!(
+            target.accept().is_err(),
+            "the redirected destination must receive no request"
+        );
     }
 
     #[test]
