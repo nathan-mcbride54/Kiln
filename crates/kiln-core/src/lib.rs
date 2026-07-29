@@ -34,11 +34,13 @@ pub use projects::{
 };
 pub use redaction::SensitiveDataRedactor;
 pub use tools::{
-    FileMatch, ReadFileRequest, ReadFileResult, RepositoryToolExecution, RepositoryToolRequest,
-    RepositoryToolResult, SearchFilesRequest, SearchFilesResult, SearchTextRequest,
-    SearchTextResult, TextMatch, ToolContractError, WriteFileRequest, WriteFileResult,
-    DEFAULT_READ_LINE_COUNT, DEFAULT_SEARCH_RESULTS, MAX_READ_LINE_COUNT, MAX_SEARCH_RESULTS,
-    MAX_WRITE_BYTES,
+    repository_tool_definitions, FileMatch, ReadFileRequest, ReadFileResult,
+    RepositoryToolDefinition, RepositoryToolExecution, RepositoryToolFailureCode,
+    RepositoryToolOutcome, RepositoryToolRequest, RepositoryToolResult, SearchFilesRequest,
+    SearchFilesResult, SearchTextRequest, SearchTextResult, TextMatch, ToolContractError,
+    WriteFileRequest, WriteFileResult, DEFAULT_READ_LINE_COUNT, DEFAULT_SEARCH_RESULTS,
+    MAX_READ_LINE_COUNT, MAX_SEARCH_RESULTS, MAX_TOOL_ARGUMENT_BYTES, MAX_TOOL_PATH_CHARS,
+    MAX_TOOL_TEXT_CHARS, MAX_WRITE_BYTES,
 };
 pub use types::{
     ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, ConnectionProbe,

@@ -5,7 +5,7 @@
 
 | Revision | Last reviewed | Current horizon | Launch platforms | Later platforms |
 |---|---|---|---|---|
-| 1.6 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
+| 1.7 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
 
 Kiln measures progress through complete, reliable user journeys. An item is
 done only when every acceptance criterion passes on its target platforms.
@@ -14,7 +14,7 @@ done only when every acceptance criterion passes on its target platforms.
 
 | ID | Priority | Status | Outcome |
 |---|---:|---|---|
-| H1-008 | P0 | `planned` | A provider can inspect, edit, and finish one real repository task through the same policy-checked loop. |
+| H1-008 | P0 | `in_progress` | A provider can inspect, edit, and finish one real repository task through the same policy-checked loop. |
 
 **Next review trigger:** H1 exit-gate review or any change to provider, event, permission, or platform contracts.
 
@@ -183,7 +183,7 @@ Last reviewed 2026-07-29. Completed in revision 1.2 with green hosted Windows an
 | H1-005 | P0 | `done` | Windows, Linux | H1-003, H1-004 | File editing and real diff review |
 | H1-006 | P0 | `done` | Windows, Linux | H0-006 | OS credential storage and redaction pipeline |
 | H1-007 | P0 | `done` | Windows, Linux | H1-001, H1-006 | Provider diagnostics and capability discovery |
-| H1-008 | P0 | `planned` | Windows, Linux | H1-003, H1-004, H1-005, H1-006, H1-007 | Provider-driven repository task loop |
+| H1-008 | P0 | `in_progress` | Windows, Linux | H1-003, H1-004, H1-005, H1-006, H1-007 | Provider-driven repository task loop |
 
 ### Acceptance criteria
 
@@ -266,7 +266,7 @@ A provider can inspect, edit, and finish one real repository task through the sa
 - The Rust orchestration loop routes every proposed tool through the central permission engine and returns results to the provider in causal order.
 - One recorded read-edit-review fixture completes through all three providers, while denied and cancelled calls produce no side effect.
 
-Last reviewed 2026-07-29. Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools. Re-reviewed in revision 1.6: the first slice is one provider-neutral, bounded tool-turn codec shared by diagnostics and production, followed by a Rust-owned loop that removes live causality and tool lifecycle synthesis from Svelte.
+Last reviewed 2026-07-29. Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools. Revision 1.7 implements the first slice: strict shared repository schemas, a bounded transient tool-turn codec, protocol-specific continuation encoding, diagnostic parser reuse, and cross-provider fixtures. The Rust-owned orchestration loop remains the H1 exit gate.
 
 ### Exit gates
 
@@ -293,6 +293,7 @@ Last reviewed 2026-07-29. Added in revision 1.5 after the progress review found 
 | H2-004 | P0 | `planned` | Windows, Linux | H0-008, H1-001 | Crash-resumable sessions |
 | H2-005 | P1 | `planned` | Windows, Linux | H1-004 | Terminal and verification profiles |
 | H2-006 | P1 | `planned` | All | H0-008, H1-001 | Context compaction and usage visibility |
+| H2-007 | P1 | `planned` | Windows, Linux | H2-001, H1-003, H1-005 | Repository topology and scale hardening |
 
 ### Acceptance criteria
 
@@ -344,6 +345,14 @@ Long sessions remain understandable and within provider limits.
 
 Last reviewed 2026-07-28. No scope change.
 
+#### H2-007 — Repository topology and scale hardening
+
+Large and structurally complex repositories remain safe and responsive without hiding unsupported behavior.
+
+- Recorded fixtures cover submodules, symlinks, sparse checkouts, Git LFS pointers, long and Unicode paths, case behavior, and large monorepos with explicit bounds and recovery behavior.
+
+Last reviewed 2026-07-29. Added in revision 1.7 after the roadmap audit found that ordinary worktree tests did not cover real repository topology and scale risks.
+
 ### Exit gates
 
 - Two tasks can change one repository without sharing workspace or event state.
@@ -351,6 +360,7 @@ Last reviewed 2026-07-28. No scope change.
 - Restoring one checkpoint preserves unrelated user work.
 - Child processes and worktrees clean up after cancellation and restart.
 - Completed tasks retain verification evidence and a finalized diff.
+- Large and complex repository topologies remain bounded, truthful, and recoverable.
 
 ## H3 — Open agent ecosystem
 
@@ -423,6 +433,7 @@ Last reviewed 2026-07-28. No scope change.
 | H4-002 | P0 | `planned` | All | H2-005 | Keyboard, accessibility, and reduced motion |
 | H4-003 | P0 | `planned` | Windows, Linux | H2-004, H2-006 | Long-session performance and diagnostics |
 | H4-004 | P1 | `planned` | All | H2-006, H0-008 | Usage, cost, backup, and retention controls |
+| H4-005 | P0 | `planned` | All | H4-001, H4-004, H3-001 | Release security, privacy, and data-deletion gate |
 
 ### Acceptance criteria
 
@@ -458,6 +469,14 @@ Users understand provider consumption and control local history.
 
 Last reviewed 2026-07-28. Combined lifecycle controls into one release outcome.
 
+#### H4-005 — Release security, privacy, and data-deletion gate
+
+Users can verify the distribution, understand data handling, and remove Kiln's local state and secrets intentionally.
+
+- The beta threat model, SBOM and dependency review, vulnerability-reporting path, telemetry defaults, uninstall behavior, local-data deletion, and OS-credential cleanup pass a documented release review.
+
+Last reviewed 2026-07-29. Added in revision 1.7 so packaging and retention work cannot declare beta readiness without supply-chain, privacy, and deletion evidence.
+
 ### Exit gates
 
 - All core flows are keyboard accessible.
@@ -465,6 +484,7 @@ Last reviewed 2026-07-28. Combined lifecycle controls into one release outcome.
 - A 24-hour task leaks neither processes nor unbounded memory.
 - Upgrade and rollback preserve sessions and policies.
 - Windows and Linux release smoke suites pass.
+- Distribution provenance, privacy defaults, secret cleanup, and local-data deletion pass release review.
 
 ## H5 — Secure autonomy and remote operation
 
@@ -587,6 +607,9 @@ Last reviewed 2026-07-28. Not committed.
 | RISK-006 | medium | mitigated | Concurrent writers or corrupt event order could make restart projections untruthful. | H0-008 uses one transactional SQLite writer, database uniqueness constraints, durable-tail checks, and validated ordered replay. |
 | RISK-007 | high | mitigated | Provider bytes arriving after cancellation could rewrite a terminal turn or leave background work active. | H1-001 shares cancellation across HTTP and jobs, gives cancellation race priority, stops the channel at one terminal batch, and blocks late mutations in both projectors. |
 | RISK-008 | high | open | Manual workspace tools could be mistaken for a complete provider-driven task loop, causing H1 to close without its stated user journey. | H1-008 now explicitly gates H1 on one policy-checked read-edit-review loop and a common fixture across OpenAI, Anthropic, and a local compatible provider. |
+| RISK-009 | high | mitigating | Fragmented or drifting provider tool-call protocols could normalize the wrong tool, arguments, order, or continuation. | Revision 1.7 adds one bounded cross-provider codec, strict allowlisted schemas, opaque transient handles, protocol-specific continuation fixtures, and fail-closed tests for malformed, missing, duplicate, oversized, unknown, and out-of-order calls. Recorded fixtures remain required for every provider protocol change. |
+| RISK-010 | medium | open | Submodules, symlinks, sparse checkouts, Git LFS, long paths, case differences, or very large repositories could break containment, performance, or recovery assumptions. | H2-007 adds explicit cross-platform topology, scale, bounding, and recovery fixtures before daily-driver claims. |
+| RISK-011 | high | open | A signed-looking release, plugin dependency, diagnostic bundle, uninstall, or retention path could still compromise provenance, privacy, secrets, or local data. | H4-005 gates beta on a threat model, SBOM and dependency review, vulnerability reporting, telemetry defaults, secret cleanup, and verified local-data deletion. |
 
 ## Decision queue
 
@@ -602,6 +625,7 @@ Last reviewed 2026-07-28. Not committed.
 | DEC-008 | accepted | Normalize provider SSE behind ordered Tauri channels and one shared cancellation domain. | H2 crash-resume review | Streaming must remain provider-independent, durable before display, and immune to late cancellation races. |
 | DEC-009 | accepted | Require native confirmation and optimistic version checks for atomic direct-workspace edits. | H2 worktree isolation | A frontend assertion must not grant write access, stale reads must not overwrite user work, and completed edits need durable review evidence. |
 | DEC-010 | accepted | Store provider secrets in OS credential services and transport only provider-bound opaque references. | H2 export and crash-recovery work | Normal application data and frontend provider commands must not expose durable secret values, and every output boundary needs one tested redaction contract. |
+| DEC-011 | accepted | Keep provider-native tool handles, raw arguments, and continuation payloads transient behind strict Rust codecs. | H3 external-agent protocol review | Provider protocol details and untrusted identifiers must not become IPC, approval, event, export, or persistence contracts. |
 
 ## Success metrics
 
@@ -612,6 +636,8 @@ Last reviewed 2026-07-28. Not committed.
 - Crash-recovery success rate.
 - Completed tasks with verification evidence.
 - Provider normalization errors per 1,000 events.
+- Tool-call codec rejections by provider and stable reason.
+- Repository topology and scale fixture coverage.
 - User-restored changes per completed task.
 - Installer and update success by platform.
 
@@ -630,6 +656,16 @@ Last reviewed 2026-07-28. Not committed.
 - Progress is measured by completed user journeys and reliability gates, not feature count.
 
 ## Change history
+
+### 2026-07-29 — revision 1.7
+
+Started the provider-driven task loop with strict cross-provider tool-turn contracts.
+
+- Marked H1-008 in progress and added canonical strict repository-tool JSON schemas plus typed success and stable failure outcomes in kiln-core.
+- Added one bounded transient codec for fragmented OpenAI Responses, Anthropic Messages, and compatible Chat Completions tool calls, including tool-only completion and opaque non-serializable provider handles.
+- Added protocol-specific tool catalogs and continuation encoders while keeping upstream IDs, raw arguments, and provider payloads out of IPC and durable application events.
+- Reused the production tool-call accumulator for provider diagnostics and added cross-provider, malformed, missing, out-of-order, oversized, unknown, call-count, success, and denied-result fixtures.
+- Added H2-007 for repository topology and scale hardening, H4-005 for release security, privacy, and deletion, three corresponding risks, and DEC-011 for the transient provider-tool boundary.
 
 ### 2026-07-29 — revision 1.6
 

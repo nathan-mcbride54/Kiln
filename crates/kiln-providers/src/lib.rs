@@ -3,6 +3,7 @@ mod diagnostics;
 mod error;
 mod local;
 mod openai;
+mod tool_turn;
 
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ use futures_util::{Stream, StreamExt};
 use kiln_core::{
     ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, CommandError, ConnectionTestRequest,
     ConnectionTestResponse, ProviderCapabilities, ProviderCredentials, ProviderKind,
-    ProviderOrigin, TokenUsage,
+    ProviderOrigin, RepositoryToolOutcome, TokenUsage,
 };
 use kiln_platform::CancellationToken;
 use reqwest::{
@@ -24,6 +25,12 @@ use tokio::sync::mpsc;
 
 use self::{anthropic::AnthropicAdapter, local::LocalAdapter, openai::OpenAiAdapter};
 use crate::error::ProviderError;
+
+pub use tool_turn::{
+    encode_tool_outcome, repository_tool_catalog, ProviderToolCall, ProviderToolCallHandle,
+    ProviderTurnEvent, ToolTurnCodec, ToolTurnCodecError, MAX_PROVIDER_TOOL_HANDLE_CHARS,
+    MAX_TOOL_CALLS_PER_TURN, MAX_TOOL_NAME_CHARS, MAX_TOOL_TURN_BYTES,
+};
 
 static OPENAI: OpenAiAdapter = OpenAiAdapter;
 static ANTHROPIC: AnthropicAdapter = AnthropicAdapter;
@@ -98,6 +105,23 @@ impl ProviderService {
         send_chat(&self.http, request)
             .await
             .map_err(|error| error.into_command(provider, &redactor))
+    }
+
+    pub fn tool_turn_codec(&self, provider: ProviderKind) -> ToolTurnCodec {
+        ToolTurnCodec::new(adapter(provider).capabilities().protocol)
+    }
+
+    pub fn repository_tool_catalog(&self, provider: ProviderKind) -> Value {
+        tool_turn::repository_tool_catalog(adapter(provider).capabilities().protocol)
+    }
+
+    pub fn encode_tool_outcome(
+        &self,
+        provider: ProviderKind,
+        call: &ProviderToolCall,
+        outcome: &RepositoryToolOutcome,
+    ) -> Result<Value, ToolTurnCodecError> {
+        tool_turn::encode_tool_outcome(adapter(provider).capabilities().protocol, call, outcome)
     }
 
     /// Starts a provider stream and returns immediately after validating and

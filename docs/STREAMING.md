@@ -21,6 +21,12 @@ to `message_delta`, `message_completed`, or `cancelled`. The desktop bridge
 assigns task message and turn identity. Every delta and terminal batch uses the
 existing durable-before-visible history coordinator.
 
+H1-008 adds a separate transient tool-turn path. `ToolTurnCodec` normalizes
+fragmented provider calls and keeps provider handles and raw arguments out of
+IPC and the event log. The current desktop still assigns live turn causality;
+the pending Rust orchestrator will take ownership of both chat and tool steps
+before H1 can close. See [Provider tool turns](TOOL_TURNS.md).
+
 Tauri channels are used instead of global events because they preserve order
 and are designed for streamed data. See the official
 [Tauri channel guide](https://v2.tauri.app/develop/calling-frontend/#channels).
@@ -57,4 +63,6 @@ terminal batch.
 Fixture and concurrency tests prove normalized output for all three protocols,
 split Unicode and CRLF framing, active-job cancellation, cancellation winning
 over queued late chunks, Tauri turn cleanup, stream-to-application mapping, and
-the cancelled-turn mutation barrier in both projectors.
+the cancelled-turn mutation barrier in both projectors. Tool-turn fixtures also
+prove fragmented cross-provider normalization, tool-only completion, strict
+schema parsing, continuation encoding, and bounded failure behavior.

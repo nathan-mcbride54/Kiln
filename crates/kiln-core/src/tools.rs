@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::{json, Value};
 use thiserror::Error;
 
 pub const DEFAULT_READ_LINE_COUNT: u32 = 200;
@@ -6,6 +7,93 @@ pub const MAX_READ_LINE_COUNT: u32 = 1_000;
 pub const DEFAULT_SEARCH_RESULTS: u32 = 100;
 pub const MAX_SEARCH_RESULTS: u32 = 500;
 pub const MAX_WRITE_BYTES: usize = 256 * 1024;
+pub const MAX_TOOL_ARGUMENT_BYTES: usize = MAX_WRITE_BYTES + 64 * 1024;
+pub const MAX_TOOL_PATH_CHARS: usize = 4_096;
+pub const MAX_TOOL_TEXT_CHARS: usize = 16_384;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryToolDefinition {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub input_schema: Value,
+}
+
+pub fn repository_tool_definitions() -> Vec<RepositoryToolDefinition> {
+    vec![
+        RepositoryToolDefinition {
+            name: "read_file",
+            description: "Read a bounded range of UTF-8 lines from a repository file.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "minLength": 1, "maxLength": MAX_TOOL_PATH_CHARS },
+                    "startLine": { "type": "integer", "minimum": 1 },
+                    "lineCount": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": MAX_READ_LINE_COUNT
+                    }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }),
+        },
+        RepositoryToolDefinition {
+            name: "search_files",
+            description: "Find repository files by a bounded path pattern.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "pattern": { "type": "string", "minLength": 1, "maxLength": MAX_TOOL_TEXT_CHARS },
+                    "maxResults": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": MAX_SEARCH_RESULTS
+                    }
+                },
+                "required": ["pattern"],
+                "additionalProperties": false
+            }),
+        },
+        RepositoryToolDefinition {
+            name: "search_text",
+            description: "Search bounded repository text without exposing unrestricted filesystem access.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "minLength": 1, "maxLength": MAX_TOOL_TEXT_CHARS },
+                    "path": { "type": "string", "minLength": 1, "maxLength": MAX_TOOL_PATH_CHARS },
+                    "caseSensitive": { "type": "boolean" },
+                    "maxResults": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": MAX_SEARCH_RESULTS
+                    }
+                },
+                "required": ["query"],
+                "additionalProperties": false
+            }),
+        },
+        RepositoryToolDefinition {
+            name: "write_file",
+            description: "Replace one UTF-8 repository file atomically after policy approval and version checking.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "minLength": 1, "maxLength": MAX_TOOL_PATH_CHARS },
+                    "content": { "type": "string", "maxLength": MAX_WRITE_BYTES },
+                    "expectedSha256": {
+                        "type": "string",
+                        "pattern": "^[A-Fa-f0-9]{64}$"
+                    }
+                },
+                "required": ["path", "content"],
+                "additionalProperties": false
+            }),
+        },
+    ]
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -39,10 +127,40 @@ impl RepositoryToolRequest {
             Self::WriteFile(request) => request.validate(),
         }
     }
+
+    pub fn from_provider_call(name: &str, arguments: &str) -> Result<Self, ToolContractError> {
+        if arguments.len() > MAX_TOOL_ARGUMENT_BYTES {
+            return Err(ToolContractError::InvalidField {
+                field: "tool.arguments",
+                message: format!("arguments cannot exceed {MAX_TOOL_ARGUMENT_BYTES} UTF-8 bytes"),
+            });
+        }
+        if !arguments.trim_start().starts_with('{') {
+            return Err(ToolContractError::InvalidField {
+                field: "tool.arguments",
+                message: "arguments must be one JSON object".to_owned(),
+            });
+        }
+
+        let request = match name {
+            "read_file" => Self::ReadFile(parse_arguments(arguments)?),
+            "search_files" => Self::SearchFiles(parse_arguments(arguments)?),
+            "search_text" => Self::SearchText(parse_arguments(arguments)?),
+            "write_file" => Self::WriteFile(parse_arguments(arguments)?),
+            _ => {
+                return Err(ToolContractError::InvalidField {
+                    field: "tool.name",
+                    message: "tool name is not in Kiln's repository allowlist".to_owned(),
+                })
+            }
+        };
+        request.validate()?;
+        Ok(request)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WriteFileRequest {
     pub path: String,
     pub content: String,
@@ -52,7 +170,7 @@ pub struct WriteFileRequest {
 
 impl WriteFileRequest {
     pub fn validate(&self) -> Result<(), ToolContractError> {
-        validate_text("writeFile.path", &self.path)?;
+        validate_path("writeFile.path", &self.path)?;
         if self.content.len() > MAX_WRITE_BYTES {
             return Err(ToolContractError::InvalidField {
                 field: "writeFile.content",
@@ -74,7 +192,7 @@ impl WriteFileRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadFileRequest {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -85,7 +203,7 @@ pub struct ReadFileRequest {
 
 impl ReadFileRequest {
     pub fn validate(&self) -> Result<(), ToolContractError> {
-        validate_text("readFile.path", &self.path)?;
+        validate_path("readFile.path", &self.path)?;
         if self.start_line == Some(0) {
             return Err(ToolContractError::InvalidField {
                 field: "readFile.startLine",
@@ -115,7 +233,7 @@ impl ReadFileRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SearchFilesRequest {
     pub pattern: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -134,7 +252,7 @@ impl SearchFilesRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SearchTextRequest {
     pub query: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -149,7 +267,7 @@ impl SearchTextRequest {
     pub fn validate(&self) -> Result<(), ToolContractError> {
         validate_text("searchText.query", &self.query)?;
         if let Some(path) = &self.path {
-            validate_text("searchText.path", path)?;
+            validate_path("searchText.path", path)?;
         }
         validate_result_limit("searchText.maxResults", self.max_results)
     }
@@ -226,6 +344,52 @@ impl RepositoryToolResult {
 pub struct RepositoryToolExecution {
     pub result: RepositoryToolResult,
     pub activity_summary: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryToolFailureCode {
+    Denied,
+    ApprovalDeclined,
+    Cancelled,
+    InvalidRequest,
+    Conflict,
+    ExecutionFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum RepositoryToolOutcome {
+    Success {
+        result: RepositoryToolResult,
+    },
+    Failure {
+        code: RepositoryToolFailureCode,
+        message: String,
+    },
+}
+
+impl RepositoryToolOutcome {
+    pub fn success(result: RepositoryToolResult) -> Self {
+        Self::Success { result }
+    }
+
+    pub fn failure(
+        code: RepositoryToolFailureCode,
+        message: impl Into<String>,
+    ) -> Result<Self, ToolContractError> {
+        let message = message.into();
+        validate_text("toolOutcome.message", &message)?;
+        Ok(Self::Failure { code, message })
+    }
+
+    pub const fn is_failure(&self) -> bool {
+        matches!(self, Self::Failure { .. })
+    }
 }
 
 impl RepositoryToolExecution {
@@ -319,9 +483,38 @@ fn validate_text(field: &'static str, value: &str) -> Result<(), ToolContractErr
             field,
             message: "value cannot be blank".to_owned(),
         })
+    } else if value.chars().count() > MAX_TOOL_TEXT_CHARS {
+        Err(ToolContractError::InvalidField {
+            field,
+            message: format!("value cannot exceed {MAX_TOOL_TEXT_CHARS} characters"),
+        })
+    } else if value.chars().any(char::is_control) {
+        Err(ToolContractError::InvalidField {
+            field,
+            message: "value cannot contain control characters".to_owned(),
+        })
     } else {
         Ok(())
     }
+}
+
+fn validate_path(field: &'static str, value: &str) -> Result<(), ToolContractError> {
+    validate_text(field, value)?;
+    if value.chars().count() > MAX_TOOL_PATH_CHARS {
+        Err(ToolContractError::InvalidField {
+            field,
+            message: format!("path cannot exceed {MAX_TOOL_PATH_CHARS} characters"),
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn parse_arguments<T: DeserializeOwned>(arguments: &str) -> Result<T, ToolContractError> {
+    serde_json::from_str(arguments).map_err(|_| ToolContractError::InvalidField {
+        field: "tool.arguments",
+        message: "arguments do not match the selected repository tool schema".to_owned(),
+    })
 }
 
 fn is_sha256(value: &str) -> bool {
@@ -346,6 +539,39 @@ mod tests {
         assert_eq!(value["input"]["caseSensitive"], true);
         assert_eq!(value["input"]["maxResults"], 25);
         request.validate().unwrap();
+    }
+
+    #[test]
+    fn provider_calls_use_strict_allowlisted_schemas() {
+        let request = RepositoryToolRequest::from_provider_call(
+            "read_file",
+            r#"{"path":"src/lib.rs","startLine":2,"lineCount":25}"#,
+        )
+        .unwrap();
+        assert_eq!(request.name(), "read_file");
+
+        assert!(RepositoryToolRequest::from_provider_call(
+            "read_file",
+            r#"{"path":"src/lib.rs","unexpected":true}"#
+        )
+        .is_err());
+        assert!(
+            RepositoryToolRequest::from_provider_call("shell", r#"{"command":"whoami"}"#).is_err()
+        );
+        assert!(RepositoryToolRequest::from_provider_call("read_file", "[]").is_err());
+    }
+
+    #[test]
+    fn repository_tool_catalog_is_strict_and_complete() {
+        let definitions = repository_tool_definitions();
+        assert_eq!(definitions.len(), 4);
+        assert_eq!(
+            definitions.iter().map(|tool| tool.name).collect::<Vec<_>>(),
+            vec!["read_file", "search_files", "search_text", "write_file"]
+        );
+        assert!(definitions
+            .iter()
+            .all(|tool| tool.input_schema["additionalProperties"] == false));
     }
 
     #[test]
