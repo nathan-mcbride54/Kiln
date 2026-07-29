@@ -1,0 +1,448 @@
+[
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-01",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 1,
+    "occurredAtMs": 1785247560000,
+    "causationId": "command:recorded-turn",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "project_opened",
+      "data": {
+        "projectId": "kiln-demo",
+        "root": "C:\\Users\\Kiln User\\Projects\\café kiln",
+        "displayName": "Café Kiln"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-02",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 2,
+    "occurredAtMs": 1785247561000,
+    "causationId": "command:recorded-turn",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "workspace_ready",
+      "data": {
+        "workspaceId": "workspace:feature replay",
+        "projectId": "kiln-demo",
+        "path": "C:\\Users\\Kiln User\\Projects\\café kiln\\feature replay",
+        "isolated": true
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-03",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 3,
+    "occurredAtMs": 1785247562000,
+    "causationId": "command:recorded-turn",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "task_created",
+      "data": {
+        "title": "Polish the provider status card"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-04",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 4,
+    "occurredAtMs": 1785247563000,
+    "causationId": "command:recorded-turn",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "task_status_changed",
+      "data": {
+        "status": "running"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-05",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 5,
+    "occurredAtMs": 1785247564000,
+    "causationId": "command:recorded-turn",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "session_started",
+      "data": {
+        "sessionId": "recorded-session",
+        "provider": "local",
+        "model": "qwen3-coder"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-06",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 6,
+    "occurredAtMs": 1785247565000,
+    "causationId": "command:recorded-turn",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "message_added",
+      "data": {
+        "messageId": "recorded-user-message",
+        "role": "user",
+        "content": "Polish the provider status card, run the focused tests, and leave the changes ready for review."
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-07",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 7,
+    "occurredAtMs": 1785247566000,
+    "causationId": "command:recorded-turn",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "turn_started",
+      "data": {
+        "turnId": "recorded-turn"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-08",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 8,
+    "occurredAtMs": 1785247567000,
+    "causationId": "recorded-event-07",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "message_delta",
+      "data": {
+        "messageId": "recorded-assistant-message",
+        "delta": "I’ll tighten the visual hierarchy, "
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-09",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 9,
+    "occurredAtMs": 1785247568000,
+    "causationId": "recorded-event-08",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "message_delta",
+      "data": {
+        "messageId": "recorded-assistant-message",
+        "delta": "preserve the calm palette, and verify the focused interaction path."
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-10",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 10,
+    "occurredAtMs": 1785247569000,
+    "causationId": "recorded-event-09",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "artifact_published",
+      "data": {
+        "artifactId": "recorded-plan",
+        "kind": "plan",
+        "label": "Plan · inspect, refine, verify"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-11",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 11,
+    "occurredAtMs": 1785247570000,
+    "causationId": "recorded-event-10",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "tool_proposed",
+      "data": {
+        "toolCallId": "tool:apply-status-card",
+        "name": "Edit provider status card",
+        "summary": "Update desktop/src/App.svelte inside the selected workspace."
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-12",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 12,
+    "occurredAtMs": 1785247571000,
+    "causationId": "recorded-event-11",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "approval_requested",
+      "data": {
+        "approvalId": "approval:status-card-write",
+        "action": "write file",
+        "resource": "desktop/src/App.svelte",
+        "reason": "The requested visual refinement changes one workspace file."
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-13",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 13,
+    "occurredAtMs": 1785247572000,
+    "causationId": "recorded-event-12",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "approval_decided",
+      "data": {
+        "approvalId": "approval:status-card-write",
+        "decision": "approved",
+        "scope": "once"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-14",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 14,
+    "occurredAtMs": 1785247573000,
+    "causationId": "recorded-event-13",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "tool_started",
+      "data": {
+        "toolCallId": "tool:apply-status-card"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-15",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 15,
+    "occurredAtMs": 1785247574000,
+    "causationId": "recorded-event-14",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "tool_output",
+      "data": {
+        "toolCallId": "tool:apply-status-card",
+        "stream": "structured",
+        "chunk": "{\"filesChanged\":1,\"hunks\":3}"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-16",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 16,
+    "occurredAtMs": 1785247575000,
+    "causationId": "recorded-event-15",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "tool_completed",
+      "data": {
+        "toolCallId": "tool:apply-status-card",
+        "success": true,
+        "exitCode": 0
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-17",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 17,
+    "occurredAtMs": 1785247576000,
+    "causationId": "recorded-event-16",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "artifact_published",
+      "data": {
+        "artifactId": "recorded-diff",
+        "kind": "diff",
+        "label": "App.svelte · 18 additions · 6 deletions"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-18",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 18,
+    "occurredAtMs": 1785247577000,
+    "causationId": "recorded-event-17",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "tool_proposed",
+      "data": {
+        "toolCallId": "tool:focused-tests",
+        "name": "Run focused tests",
+        "summary": "Execute the provider card interaction and replay checks."
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-19",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 19,
+    "occurredAtMs": 1785247578000,
+    "causationId": "recorded-event-18",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "tool_started",
+      "data": {
+        "toolCallId": "tool:focused-tests"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-20",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 20,
+    "occurredAtMs": 1785247579000,
+    "causationId": "recorded-event-19",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "tool_output",
+      "data": {
+        "toolCallId": "tool:focused-tests",
+        "stream": "stdout",
+        "chunk": "running 12 tests\r\ntest result: ok. 12 passed\r\n"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-21",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 21,
+    "occurredAtMs": 1785247580000,
+    "causationId": "recorded-event-20",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "tool_completed",
+      "data": {
+        "toolCallId": "tool:focused-tests",
+        "success": true,
+        "exitCode": 0
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-22",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 22,
+    "occurredAtMs": 1785247581000,
+    "causationId": "recorded-event-21",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "artifact_published",
+      "data": {
+        "artifactId": "recorded-tests",
+        "kind": "test_result",
+        "label": "Focused checks · 12 passed"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-23",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 23,
+    "occurredAtMs": 1785247582000,
+    "causationId": "recorded-event-22",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "message_completed",
+      "data": {
+        "messageId": "recorded-assistant-message",
+        "model": "qwen3-coder",
+        "content": "The provider status card now has clearer state emphasis, steadier spacing, and a compact result line. The focused interaction and replay checks pass, and the diff is ready for review.",
+        "finishReason": "stop",
+        "usage": {
+          "inputTokens": 824,
+          "outputTokens": 196,
+          "totalTokens": 1020
+        }
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-24",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 24,
+    "occurredAtMs": 1785247583000,
+    "causationId": "recorded-event-23",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "artifact_published",
+      "data": {
+        "artifactId": "recorded-command-output",
+        "kind": "command_output",
+        "label": "Test output · CRLF normalized"
+      }
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "eventId": "recorded-event-25",
+    "streamId": "task:recorded-replay",
+    "taskId": "recorded-replay",
+    "sequence": 25,
+    "occurredAtMs": 1785247584000,
+    "causationId": "recorded-event-24",
+    "correlationId": "recorded-turn",
+    "payload": {
+      "type": "turn_receipt",
+      "data": {
+        "turnId": "recorded-turn",
+        "outcome": "completed",
+        "summary": "One file refined, two tools completed, and 12 focused checks passed."
+      }
+    }
+  }
+]

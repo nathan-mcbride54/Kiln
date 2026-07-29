@@ -9,8 +9,9 @@ This repository contains two complementary deliverables:
 
 - `app/` — the deployable interactive product preview and provider onboarding
   experience.
-- `desktop/` — the native Svelte + Tauri application foundation with a Rust
-  provider layer.
+- `desktop/` — the native Svelte + thin Tauri application shell.
+- `crates/` — the Tauri-free Rust core, provider adapters, SQLite storage, Git
+  workspace inspector, and platform boundaries shared by every future transport.
 
 ## Product principles
 
@@ -43,7 +44,7 @@ listed by Tauri.
 
 ```powershell
 cd desktop
-npm install
+npm ci
 npm run tauri dev
 ```
 
@@ -57,12 +58,49 @@ Credentials are accepted as ephemeral session values in the current
 foundation. OS credential-store persistence is a gated roadmap item and must
 land before production release.
 
+Task events are different from credentials: the desktop stores normalized,
+redacted application events in `kiln.db` under the OS application-data
+directory. Event batches commit before the Svelte projection changes and are
+replayed when the application starts.
+
+Before a task can start, the desktop opens and validates a real Git working
+tree. Project identity, canonical root, branch, commit, status counts, and safe
+provider/model defaults are remembered as immutable application events. API
+keys and remote URLs are never part of remembered project metadata.
+
 ## Product documentation
 
 - [Product specification](docs/SPECIFICATION.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Application event contract](docs/APPLICATION_CONTRACT.md)
+- [SQLite event storage](docs/STORAGE.md)
+- [Recorded provider-free session](docs/RECORDED_SESSION.md)
+- [Central permission engine](docs/PERMISSIONS.md)
+- [Provider streaming and cancellation](docs/STREAMING.md)
+- [Git projects and direct workspaces](docs/PROJECTS.md)
+- [Read-only repository tools](docs/REPOSITORY_TOOLS.md)
+- [Windows/Linux continuous integration](docs/CONTINUOUS_INTEGRATION.md)
 - [Evolving roadmap](ROADMAP.md)
 - [Local-first control-plane decision](docs/decisions/0001-local-first-control-plane.md)
+- [Versioned event-boundary decision](docs/decisions/0002-versioned-application-events.md)
+- [SQLite event-log decision](docs/decisions/0003-sqlite-immutable-event-log.md)
+- [Central permission-engine decision](docs/decisions/0004-central-permission-engine.md)
+- [Ordered provider-streaming decision](docs/decisions/0005-ordered-provider-streaming.md)
+- [Bounded repository-inspection decision](docs/decisions/0006-bounded-repository-inspection.md)
+
+The roadmap is generated from `product/roadmap.json`, which carries stable item
+IDs, dependencies, acceptance gates, risks, decisions, and change history.
+
+```powershell
+npm run roadmap:render
+npm run roadmap:check
+npm run fixtures:render
+npm run fixtures:check
+```
+
+Edit the structured source, render the outputs, and commit the source and
+generated files together. The same render also refreshes the web and desktop
+roadmap summaries.
 
 ## Platform status
 
@@ -78,10 +116,22 @@ land before production release.
 npm run build
 npm test
 
+cargo test --workspace --all-targets --offline
+
 cd desktop
+npm run check
 npm run build
-cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Kiln is currently an alpha foundation. It does not yet execute repository tools
-or claim to sandbox an agent.
+On Windows machines where Application Control blocks executables built inside
+the repository, point Cargo at a trusted temporary build directory:
+
+```powershell
+$kilnTarget = Join-Path ([System.IO.Path]::GetTempPath()) "kiln-cargo-target"
+$env:CARGO_TARGET_DIR = $kilnTarget
+cargo test --workspace --all-targets --offline
+```
+
+Kiln is currently an alpha foundation. It executes bounded, policy-checked
+read-only repository tools, but it does not yet edit files, run general shell
+commands, or claim to sandbox an agent.

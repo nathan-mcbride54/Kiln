@@ -9,8 +9,13 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern .kiln-validation --ignore-pattern .kiln-cargo-target --ignore-pattern desktop/src-tauri/target"
+    "test": "npm run roadmap:check && npm run fixtures:check && npm run desktop:contract-check && npm run build && node --test tests/rendered-html.test.mjs tests/desktop-events.test.ts tests/platform-fixtures.test.mjs",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern desktop/dist --ignore-pattern .next --ignore-pattern .kiln-validation --ignore-pattern .kiln-cargo-target --ignore-pattern desktop/src-tauri/target",
+    "roadmap:render": "node scripts/render-roadmap.mjs",
+    "roadmap:check": "node scripts/render-roadmap.mjs --check",
+    "fixtures:render": "node scripts/render-recorded-session.mjs",
+    "fixtures:check": "node scripts/render-recorded-session.mjs --check",
+    "desktop:contract-check": "tsc --project desktop/tsconfig.contract.json"
   },
   "dependencies": {
     "next": "16.2.6",

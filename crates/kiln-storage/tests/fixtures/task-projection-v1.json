@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "streamId": "task:test",
+  "taskId": "test",
+  "lastSequence": 3,
+  "title": "Persist events",
+  "status": "completed",
+  "session": null,
+  "activeTurnId": null,
+  "messages": [],
+  "pendingApproval": null,
+  "tools": [],
+  "artifacts": [],
+  "lastReceipt": {
+    "turnId": "turn-1",
+    "outcome": "completed",
+    "summary": "Storage verified."
+  }
+}

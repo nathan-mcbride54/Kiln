@@ -1,3 +1,7 @@
+use kiln_core::{
+    ChatRequest, ChatResponse, ChatRole, ProviderCapabilities, ProviderCredentials, ProviderKind,
+    ProviderProtocol, TokenUsage,
+};
 use reqwest::{
     header::{HeaderName, HeaderValue, AUTHORIZATION},
     RequestBuilder,
@@ -5,15 +9,9 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use serde_json::{to_value, Value};
 
-use crate::{
-    error::ProviderError,
-    types::{
-        ChatRequest, ChatResponse, ProviderCapabilities, ProviderCredentials, ProviderKind,
-        ProviderProtocol, TokenUsage,
-    },
-};
-
+use super::StreamState;
 use super::{bearer_header, require_api_key, ProviderAdapter};
+use crate::error::ProviderError;
 
 pub(crate) struct OpenAiAdapter;
 
@@ -32,7 +30,7 @@ impl ProviderAdapter for OpenAiAdapter {
             custom_base_url: true,
             custom_headers: true,
             model_discovery: true,
-            streaming: false,
+            streaming: true,
             system_messages: true,
             temperature: true,
         }
@@ -72,10 +70,10 @@ impl ProviderAdapter for OpenAiAdapter {
             .iter()
             .map(|message| OpenAiInputMessage {
                 role: match message.role {
-                    crate::types::ChatRole::System => "system",
-                    crate::types::ChatRole::Developer => "developer",
-                    crate::types::ChatRole::User => "user",
-                    crate::types::ChatRole::Assistant => "assistant",
+                    ChatRole::System => "system",
+                    ChatRole::Developer => "developer",
+                    ChatRole::User => "user",
+                    ChatRole::Assistant => "assistant",
                 },
                 content: &message.content,
             })
@@ -85,6 +83,7 @@ impl ProviderAdapter for OpenAiAdapter {
             input,
             max_output_tokens: request.max_output_tokens,
             temperature: request.temperature,
+            stream: false,
         };
         to_value(payload).map_err(|error| {
             ProviderError::InvalidRequest(format!(
@@ -99,6 +98,44 @@ impl ProviderAdapter for OpenAiAdapter {
         requested_model: &str,
     ) -> Result<ChatResponse, ProviderError> {
         parse_response(body, requested_model)
+    }
+
+    fn parse_stream_data(
+        &self,
+        data: &str,
+        state: &mut StreamState,
+    ) -> Result<Vec<kiln_core::ChatStreamEvent>, ProviderError> {
+        if data == "[DONE]" {
+            return Ok(state.complete()?.into_iter().collect());
+        }
+        let value: Value = serde_json::from_str(data).map_err(|error| {
+            ProviderError::MalformedResponse(format!(
+                "OpenAI returned a stream event Kiln could not parse: {error}"
+            ))
+        })?;
+        match value.get("type").and_then(Value::as_str) {
+            Some("response.output_text.delta") => Ok(value
+                .get("delta")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .and_then(|delta| state.delta(delta))
+                .into_iter()
+                .collect()),
+            Some("response.completed") => {
+                let response = value.get("response").ok_or_else(|| {
+                    ProviderError::MalformedResponse(
+                        "OpenAI completed a stream without a response object.".to_owned(),
+                    )
+                })?;
+                let response = parse_response(&response.to_string(), &state.requested_model)?;
+                Ok(state.complete_response(response).into_iter().collect())
+            }
+            Some("response.failed") | Some("error") => Err(ProviderError::Upstream {
+                status: 500,
+                message: "OpenAI reported a failed stream.".to_owned(),
+            }),
+            _ => Ok(Vec::new()),
+        }
     }
 }
 
@@ -118,6 +155,7 @@ struct OpenAiRequestPayload<'a> {
     max_output_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
+    stream: bool,
 }
 
 #[derive(Serialize)]
@@ -177,7 +215,7 @@ fn parse_response(body: &str, requested_model: &str) -> Result<ChatResponse, Pro
         .filter(|item| {
             item.kind
                 .as_deref()
-                .is_none_or(|kind| kind == "output_text")
+                .map_or(true, |kind| kind == "output_text")
         })
         .filter_map(|item| item.text.as_deref())
         .collect::<String>();
@@ -248,5 +286,36 @@ mod tests {
         let error = parse_response(r#"{"id":"resp_123","output":[]}"#, "gpt-5")
             .expect_err("missing output should fail");
         assert!(matches!(error, ProviderError::MalformedResponse(_)));
+    }
+
+    #[test]
+    fn normalizes_responses_api_stream_events() {
+        let adapter = OpenAiAdapter;
+        let mut state = StreamState::new(ProviderKind::OpenAi, "fallback".to_owned());
+        let delta = adapter
+            .parse_stream_data(
+                r#"{"type":"response.output_text.delta","delta":"Hello "}"#,
+                &mut state,
+            )
+            .unwrap();
+        let completed = adapter
+            .parse_stream_data(
+                r#"{"type":"response.completed","response":{"id":"resp_stream","model":"gpt-5","status":"completed","output_text":"Hello world","usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}"#,
+                &mut state,
+            )
+            .unwrap();
+
+        assert_eq!(
+            delta,
+            vec![kiln_core::ChatStreamEvent::MessageDelta {
+                delta: "Hello ".to_owned()
+            }]
+        );
+        assert!(matches!(
+            completed.as_slice(),
+            [kiln_core::ChatStreamEvent::MessageCompleted { response }]
+                if response.content == "Hello world"
+                    && response.usage.total_tokens == Some(5)
+        ));
     }
 }

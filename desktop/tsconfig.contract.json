@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["node"]
+  },
+  "include": [
+    "contract/tauri-api.d.ts",
+    "src/lib/bridge.ts",
+    "src/lib/events.ts",
+    "src/lib/history.ts",
+    "src/lib/preview-session.ts",
+    "src/lib/projector.ts",
+    "src/lib/recorded-session.generated.ts",
+    "src/lib/stream-events.ts",
+    "src/lib/types.ts",
+    "../tests/desktop-events.test.ts"
+  ]
+}

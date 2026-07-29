@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "streamId": "task:recorded-replay",
+  "taskId": "recorded-replay",
+  "lastSequence": 25,
+  "title": "Polish the provider status card",
+  "status": "completed",
+  "session": {
+    "sessionId": "recorded-session",
+    "provider": "local",
+    "model": "qwen3-coder"
+  },
+  "activeTurnId": null,
+  "messages": [
+    {
+      "messageId": "recorded-user-message",
+      "role": "user",
+      "model": null,
+      "content": "Polish the provider status card, run the focused tests, and leave the changes ready for review.",
+      "completed": true,
+      "usage": {
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": null
+      }
+    },
+    {
+      "messageId": "recorded-assistant-message",
+      "role": "assistant",
+      "model": "qwen3-coder",
+      "content": "The provider status card now has clearer state emphasis, steadier spacing, and a compact result line. The focused interaction and replay checks pass, and the diff is ready for review.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 824,
+        "outputTokens": 196,
+        "totalTokens": 1020
+      }
+    }
+  ],
+  "pendingApproval": null,
+  "tools": [
+    {
+      "toolCallId": "tool:apply-status-card",
+      "name": "Edit provider status card",
+      "summary": "Update desktop/src/App.svelte inside the selected workspace.",
+      "status": "completed",
+      "outputChunks": 1,
+      "exitCode": 0
+    },
+    {
+      "toolCallId": "tool:focused-tests",
+      "name": "Run focused tests",
+      "summary": "Execute the provider card interaction and replay checks.",
+      "status": "completed",
+      "outputChunks": 1,
+      "exitCode": 0
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "recorded-plan",
+      "kind": "plan",
+      "label": "Plan · inspect, refine, verify"
+    },
+    {
+      "artifactId": "recorded-diff",
+      "kind": "diff",
+      "label": "App.svelte · 18 additions · 6 deletions"
+    },
+    {
+      "artifactId": "recorded-tests",
+      "kind": "test_result",
+      "label": "Focused checks · 12 passed"
+    },
+    {
+      "artifactId": "recorded-command-output",
+      "kind": "command_output",
+      "label": "Test output · CRLF normalized"
+    }
+  ],
+  "lastReceipt": {
+    "turnId": "recorded-turn",
+    "outcome": "completed",
+    "summary": "One file refined, two tools completed, and 12 focused checks passed."
+  }
+}

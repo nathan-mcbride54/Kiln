@@ -1,0 +1,15 @@
+[package]
+name = "kiln-workspace"
+description = "Safe Git repository discovery and workspace snapshots for Kiln"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+dunce.workspace = true
+hex.workspace = true
+kiln-core = { path = "../kiln-core" }
+kiln-platform = { path = "../kiln-platform" }
+sha2.workspace = true
+thiserror.workspace = true

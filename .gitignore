@@ -45,6 +45,7 @@ next-env.d.ts
 .sites-dev.*.log
 
 # native desktop
+/target/
 /desktop/node_modules/
 /desktop/dist/
 /desktop/src-tauri/target/
