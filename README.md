@@ -54,9 +54,11 @@ The desktop provider adapters use:
 - Anthropic Messages API
 - OpenAI-compatible Chat Completions for a user-configured local endpoint
 
-Credentials are accepted as ephemeral session values in the current
-foundation. OS credential-store persistence is a gated roadmap item and must
-land before production release.
+The desktop stores provider credentials in Windows Credential Manager or the
+Linux Secret Service. Normal application commands, events, remembered projects,
+and SQLite state carry only opaque provider-bound references. Rust secret
+buffers are zeroized where practical and output boundaries share a central
+redactor; see [the credential guide](docs/CREDENTIALS.md).
 
 Task events are different from credentials: the desktop stores normalized,
 redacted application events in `kiln.db` under the OS application-data

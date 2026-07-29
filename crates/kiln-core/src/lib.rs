@@ -9,6 +9,7 @@ mod events;
 mod policy;
 mod projection;
 mod projects;
+mod redaction;
 mod tools;
 mod types;
 
@@ -31,6 +32,7 @@ pub use projection::{
 pub use projects::{
     OpenProjectRequest, ProjectDefaults, ProjectSnapshot, RememberedProject, RepositoryStatus,
 };
+pub use redaction::SensitiveDataRedactor;
 pub use tools::{
     FileMatch, ReadFileRequest, ReadFileResult, RepositoryToolExecution, RepositoryToolRequest,
     RepositoryToolResult, SearchFilesRequest, SearchFilesResult, SearchTextRequest,
@@ -40,6 +42,7 @@ pub use tools::{
 };
 pub use types::{
     ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, ConnectionTestRequest,
-    ConnectionTestResponse, ProviderCapabilities, ProviderCredentials, ProviderKind,
-    ProviderProtocol, SecretString, TokenUsage,
+    ConnectionTestResponse, CredentialBackendKind, CredentialProfileRef, CredentialReferenceError,
+    CredentialSaveRequest, ProviderCapabilities, ProviderCredentialProfile, ProviderCredentials,
+    ProviderKind, ProviderProtocol, SecretString, TokenUsage,
 };

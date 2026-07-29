@@ -3,7 +3,11 @@ use std::{
     fmt::{self, Debug, Formatter},
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
+use thiserror::Error;
+use zeroize::Zeroize;
+
+use crate::SensitiveDataRedactor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -11,6 +15,18 @@ pub enum ProviderKind {
     OpenAi,
     Anthropic,
     Local,
+}
+
+impl ProviderKind {
+    pub const ALL: [Self; 3] = [Self::OpenAi, Self::Anthropic, Self::Local];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAi => "openai",
+            Self::Anthropic => "anthropic",
+            Self::Local => "local",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,7 +37,7 @@ pub enum ProviderProtocol {
     OpenAiChatCompletions,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
 pub struct SecretString(String);
 
@@ -41,6 +57,16 @@ impl SecretString {
     pub fn is_blank(&self) -> bool {
         self.0.trim().is_empty()
     }
+
+    pub fn clear(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+impl Drop for SecretString {
+    fn drop(&mut self) {
+        self.clear();
+    }
 }
 
 impl Debug for SecretString {
@@ -49,21 +75,25 @@ impl Debug for SecretString {
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Default)]
 pub struct ProviderCredentials {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key: Option<SecretString>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub organization: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
     /// Ephemeral per-request headers for compatible gateways.
     ///
     /// Values are redacted by `Debug` and the entire credentials object is
     /// consumed only by the current request.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub custom_headers: BTreeMap<String, SecretString>,
+}
+
+impl ProviderCredentials {
+    pub fn redactor(&self) -> SensitiveDataRedactor {
+        let mut secrets = Vec::with_capacity(1 + self.custom_headers.len());
+        secrets.extend(self.api_key.iter().cloned());
+        secrets.extend(self.custom_headers.values().cloned());
+        SensitiveDataRedactor::new(secrets)
+    }
 }
 
 impl Debug for ProviderCredentials {
@@ -86,6 +116,72 @@ impl Debug for ProviderCredentials {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialBackendKind {
+    WindowsCredentialManager,
+    LinuxSecretService,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("credential profile reference is invalid")]
+pub struct CredentialReferenceError;
+
+#[derive(Clone, PartialEq, Eq, Hash, Serialize)]
+#[serde(transparent)]
+pub struct CredentialProfileRef(String);
+
+impl CredentialProfileRef {
+    pub fn new(value: impl Into<String>) -> Result<Self, CredentialReferenceError> {
+        let value = value.into();
+        let suffix = value
+            .strip_prefix("cred_")
+            .ok_or(CredentialReferenceError)?;
+        if suffix.len() != 32
+            || !suffix
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(CredentialReferenceError);
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Debug for CredentialProfileRef {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for CredentialProfileRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Self::new(String::deserialize(deserializer)?).map_err(de::Error::custom)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialSaveRequest {
+    pub provider: ProviderKind,
+    pub secret: SecretString,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCredentialProfile {
+    pub provider: ProviderKind,
+    pub credential_ref: CredentialProfileRef,
+    pub backend: CredentialBackendKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ChatRole {
     System,
@@ -105,8 +201,10 @@ pub struct ChatMessage {
 #[serde(rename_all = "camelCase")]
 pub struct ChatRequest {
     pub provider: ProviderKind,
-    #[serde(default)]
+    #[serde(default, skip)]
     pub credentials: ProviderCredentials,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_ref: Option<CredentialProfileRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
     pub model: String,
@@ -121,8 +219,10 @@ pub struct ChatRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionTestRequest {
     pub provider: ProviderKind,
-    #[serde(default)]
+    #[serde(default, skip)]
     pub credentials: ProviderCredentials,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_ref: Option<CredentialProfileRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
 }
@@ -201,5 +301,57 @@ mod tests {
         let debug = format!("{credentials:?}");
         assert!(!debug.contains("definitely-secret"));
         assert!(debug.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn secret_can_be_zeroized_before_drop() {
+        let mut secret = SecretString::new("definitely-secret");
+        secret.clear();
+        assert!(secret.expose_secret().is_empty());
+    }
+
+    #[test]
+    fn credential_reference_rejects_non_opaque_values() {
+        assert!(CredentialProfileRef::new("cred_0123456789abcdef0123456789abcdef").is_ok());
+        assert!(CredentialProfileRef::new("sk-proj-not-a-reference").is_err());
+        assert!(CredentialProfileRef::new("cred_0123456789ABCDEF0123456789ABCDEF").is_err());
+    }
+
+    #[test]
+    fn request_serialization_excludes_resolved_credentials() {
+        let request = ConnectionTestRequest {
+            provider: ProviderKind::OpenAi,
+            credentials: ProviderCredentials {
+                api_key: Some(SecretString::new("must-not-leak")),
+                ..ProviderCredentials::default()
+            },
+            credential_ref: Some(
+                CredentialProfileRef::new("cred_0123456789abcdef0123456789abcdef").unwrap(),
+            ),
+            base_url: None,
+        };
+
+        let serialized = serde_json::to_string(&request).unwrap();
+        assert!(!serialized.contains("must-not-leak"));
+        assert!(!serialized.contains("credentials"));
+        assert!(serialized.contains("credentialRef"));
+    }
+
+    #[test]
+    fn request_deserialization_ignores_raw_credentials() {
+        let request: ConnectionTestRequest = serde_json::from_value(serde_json::json!({
+            "provider": "openai",
+            "credentialRef": "cred_0123456789abcdef0123456789abcdef",
+            "credentials": {
+                "apiKey": "injected-secret"
+            }
+        }))
+        .unwrap();
+
+        assert!(request.credentials.api_key.is_none());
+        assert_eq!(
+            request.credential_ref.unwrap().as_str(),
+            "cred_0123456789abcdef0123456789abcdef"
+        );
     }
 }

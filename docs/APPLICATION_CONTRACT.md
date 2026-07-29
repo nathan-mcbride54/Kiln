@@ -145,6 +145,10 @@ Forbidden in event payloads:
 Durable events contain redacted summaries and content-addressed artifact
 references. Raw diagnostic retention, when implemented, is separate,
 explicitly enabled, and subject to redaction.
+Provider commands carry opaque, provider-bound credential references. The
+trusted Rust transport resolves them outside the event boundary, and the
+central redactor scrubs provider errors before they can become application
+events. See [the credential-storage guide](CREDENTIALS.md).
 
 ## Validation
 

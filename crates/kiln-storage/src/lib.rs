@@ -6,7 +6,8 @@ use std::{
 };
 
 use kiln_core::{
-    ApplicationEvent, ContractError, EventEnvelope, EventId, EventSequence, StreamId, TaskId,
+    ApplicationEvent, ContractError, EventEnvelope, EventId, EventSequence, SensitiveDataRedactor,
+    StreamId, TaskId,
 };
 use serde_json::Value;
 use sqlx::{
@@ -387,7 +388,7 @@ fn scan_value(value: &Value, path: &mut Vec<String>) -> Result<(), StorageError>
                 scan_value(child, path)?;
             }
         }
-        Value::String(text) if contains_secret_marker(text) => {
+        Value::String(text) if SensitiveDataRedactor::default().contains_sensitive(text) => {
             return Err(StorageError::SensitiveData(path.join(".")));
         }
         _ => {}
@@ -412,15 +413,6 @@ fn is_sensitive_key(key: &str) -> bool {
             | "refreshtoken"
             | "secret"
     )
-}
-
-fn contains_secret_marker(value: &str) -> bool {
-    let lowercase = value.to_ascii_lowercase();
-    lowercase.contains("authorization: bearer ")
-        || lowercase.contains("\"api_key\":")
-        || lowercase.contains("\"password\":")
-        || lowercase.contains("sk-ant-")
-        || lowercase.contains("sk-proj-")
 }
 
 fn now_unix_ms() -> i64 {

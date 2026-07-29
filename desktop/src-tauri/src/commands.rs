@@ -7,11 +7,12 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use crate::AppState;
 use kiln_core::{
     ApplicationEvent, ChatRequest, ChatResponse, ChatStreamEvent, CommandError,
-    ConnectionTestRequest, ConnectionTestResponse, ErrorCode, EventEnvelope, EventId,
-    OpenProjectRequest, ProjectSnapshot, ProviderCapabilities, RememberedProject,
+    ConnectionTestRequest, ConnectionTestResponse, CredentialProfileRef, CredentialSaveRequest,
+    ErrorCode, EventEnvelope, EventId, OpenProjectRequest, ProjectSnapshot, ProviderCapabilities,
+    ProviderCredentialProfile, ProviderCredentials, ProviderKind, RememberedProject,
     RepositoryToolExecution, RepositoryToolRequest, StreamId, APPLICATION_CONTRACT_VERSION,
 };
-use kiln_platform::{CancellationToken, Clock};
+use kiln_platform::{CancellationToken, Clock, CredentialStoreError, OsCredentialStore};
 use kiln_workspace::{RepositoryError, WorkspaceToolError};
 
 #[tauri::command]
@@ -20,10 +21,48 @@ pub fn list_provider_capabilities(state: State<'_, AppState>) -> Vec<ProviderCap
 }
 
 #[tauri::command]
+pub async fn list_provider_credentials(
+    state: State<'_, AppState>,
+) -> Result<Vec<ProviderCredentialProfile>, CommandError> {
+    let store = state.credentials.clone();
+    tauri::async_runtime::spawn_blocking(move || store.list_profiles())
+        .await
+        .map_err(|_| credential_task_error(None))?
+        .map_err(|error| credential_error(error, None))
+}
+
+#[tauri::command]
+pub async fn save_provider_credential(
+    state: State<'_, AppState>,
+    request: CredentialSaveRequest,
+) -> Result<ProviderCredentialProfile, CommandError> {
+    let store = state.credentials.clone();
+    let provider = request.provider;
+    tauri::async_runtime::spawn_blocking(move || store.save(provider, &request.secret))
+        .await
+        .map_err(|_| credential_task_error(Some(provider)))?
+        .map_err(|error| credential_error(error, Some(provider)))
+}
+
+#[tauri::command]
+pub async fn delete_provider_credential(
+    state: State<'_, AppState>,
+    provider: ProviderKind,
+    credential_ref: CredentialProfileRef,
+) -> Result<(), CommandError> {
+    let store = state.credentials.clone();
+    tauri::async_runtime::spawn_blocking(move || store.delete(provider, &credential_ref))
+        .await
+        .map_err(|_| credential_task_error(Some(provider)))?
+        .map_err(|error| credential_error(error, Some(provider)))
+}
+
+#[tauri::command]
 pub async fn test_connection(
     state: State<'_, AppState>,
     request: ConnectionTestRequest,
 ) -> Result<ConnectionTestResponse, CommandError> {
+    let request = resolve_connection_credentials(state.credentials.clone(), request).await?;
     state.providers.test_connection(&request).await
 }
 
@@ -32,6 +71,7 @@ pub async fn send_chat_request(
     state: State<'_, AppState>,
     request: ChatRequest,
 ) -> Result<ChatResponse, CommandError> {
+    let request = resolve_chat_credentials(state.credentials.clone(), request).await?;
     state.providers.send_chat(&request).await
 }
 
@@ -48,7 +88,7 @@ pub enum DesktopStreamEvent {
 }
 
 #[tauri::command]
-pub fn start_chat_stream(
+pub async fn start_chat_stream(
     state: State<'_, AppState>,
     turn_id: String,
     request: ChatRequest,
@@ -57,6 +97,7 @@ pub fn start_chat_stream(
     if turn_id.trim().is_empty() {
         return Err(invalid_turn("The turn identifier cannot be blank."));
     }
+    let request = resolve_chat_credentials(state.credentials.clone(), request).await?;
     let cancellation = state
         .active_turns
         .start(turn_id.clone())
@@ -84,6 +125,72 @@ pub fn start_chat_stream(
         active_turns.finish(&turn_id);
     });
     Ok(())
+}
+
+async fn resolve_connection_credentials(
+    store: OsCredentialStore,
+    mut request: ConnectionTestRequest,
+) -> Result<ConnectionTestRequest, CommandError> {
+    let Some(credential_ref) = request.credential_ref.clone() else {
+        return Ok(request);
+    };
+    let provider = request.provider;
+    let secret =
+        tauri::async_runtime::spawn_blocking(move || store.resolve(provider, &credential_ref))
+            .await
+            .map_err(|_| credential_task_error(Some(provider)))?
+            .map_err(|error| credential_error(error, Some(provider)))?;
+    request.credentials = ProviderCredentials {
+        api_key: Some(secret),
+        ..ProviderCredentials::default()
+    };
+    Ok(request)
+}
+
+async fn resolve_chat_credentials(
+    store: OsCredentialStore,
+    mut request: ChatRequest,
+) -> Result<ChatRequest, CommandError> {
+    let Some(credential_ref) = request.credential_ref.clone() else {
+        return Ok(request);
+    };
+    let provider = request.provider;
+    let secret =
+        tauri::async_runtime::spawn_blocking(move || store.resolve(provider, &credential_ref))
+            .await
+            .map_err(|_| credential_task_error(Some(provider)))?
+            .map_err(|error| credential_error(error, Some(provider)))?;
+    request.credentials = ProviderCredentials {
+        api_key: Some(secret),
+        ..ProviderCredentials::default()
+    };
+    Ok(request)
+}
+
+fn credential_error(error: CredentialStoreError, provider: Option<ProviderKind>) -> CommandError {
+    CommandError {
+        code: match error {
+            CredentialStoreError::BlankSecret => ErrorCode::InvalidRequest,
+            _ => ErrorCode::CredentialFailure,
+        },
+        message: error.to_string(),
+        provider,
+        status: None,
+        retryable: matches!(
+            error,
+            CredentialStoreError::Unavailable | CredentialStoreError::ReferenceGeneration
+        ),
+    }
+}
+
+fn credential_task_error(provider: Option<ProviderKind>) -> CommandError {
+    CommandError {
+        code: ErrorCode::CredentialFailure,
+        message: "The operating-system credential task could not be completed.".to_owned(),
+        provider,
+        status: None,
+        retryable: true,
+    }
 }
 
 #[tauri::command]

@@ -104,9 +104,10 @@ Typed application events exclude credential objects by construction. Before
 serialization, storage also scans for forbidden keys such as API keys,
 authorization, cookies, passwords, refresh tokens, custom headers, and full
 environments. Common bearer-token markers are rejected in string content.
-
-This is defense in depth, not the final redaction pipeline. Repository tools
-remain blocked until H1-006 centralizes redaction and OS credential storage.
+String detection uses the same central redactor that scrubs provider errors,
+diagnostics, exports, and crash-report text. This remains defense in depth:
+secrets are excluded from typed event contracts and stored in the OS credential
+service. See [the credential-storage guide](CREDENTIALS.md).
 
 ## Remembered projects
 

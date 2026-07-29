@@ -1,4 +1,4 @@
-use kiln_core::{CommandError, ErrorCode, ProviderKind};
+use kiln_core::{CommandError, ErrorCode, ProviderKind, SensitiveDataRedactor};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -20,7 +20,11 @@ pub(crate) enum ProviderError {
 }
 
 impl ProviderError {
-    pub(crate) fn into_command(self, provider: ProviderKind) -> CommandError {
+    pub(crate) fn into_command(
+        self,
+        provider: ProviderKind,
+        redactor: &SensitiveDataRedactor,
+    ) -> CommandError {
         let (code, message, status, retryable) = match self {
             Self::InvalidRequest(message) => (ErrorCode::InvalidRequest, message, None, false),
             Self::InvalidConfiguration(message) => {
@@ -44,10 +48,30 @@ impl ProviderError {
 
         CommandError {
             code,
-            message,
+            message: redactor.redact(&message),
             provider: Some(provider),
             status,
             retryable,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use kiln_core::SecretString;
+
+    use super::*;
+
+    #[test]
+    fn provider_errors_are_redacted_before_crossing_the_command_boundary() {
+        let redactor = SensitiveDataRedactor::new([SecretString::new("opaque-upstream-secret")]);
+        let error = ProviderError::Upstream {
+            status: 400,
+            message: "OpenAI echoed opaque-upstream-secret in an error".to_owned(),
+        }
+        .into_command(ProviderKind::OpenAi, &redactor);
+
+        assert!(!error.message.contains("opaque-upstream-secret"));
+        assert!(error.message.contains("[REDACTED]"));
     }
 }

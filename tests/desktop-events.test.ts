@@ -336,7 +336,6 @@ test("ignores late provider mutations after a cancellation receipt", () => {
 test("normalizes desktop stream messages into application event batches", () => {
   const request = {
     provider: "local" as const,
-    credentials: {},
     model: "qwen",
     messages: [{ role: "user" as const, content: "Stream it." }],
   };

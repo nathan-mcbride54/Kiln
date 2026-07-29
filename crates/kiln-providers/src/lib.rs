@@ -58,16 +58,18 @@ impl ProviderService {
         request: &ConnectionTestRequest,
     ) -> Result<ConnectionTestResponse, CommandError> {
         let provider = request.provider;
+        let redactor = request.credentials.redactor();
         test_connection(&self.http, request)
             .await
-            .map_err(|error| error.into_command(provider))
+            .map_err(|error| error.into_command(provider, &redactor))
     }
 
     pub async fn send_chat(&self, request: &ChatRequest) -> Result<ChatResponse, CommandError> {
         let provider = request.provider;
+        let redactor = request.credentials.redactor();
         send_chat(&self.http, request)
             .await
-            .map_err(|error| error.into_command(provider))
+            .map_err(|error| error.into_command(provider, &redactor))
     }
 
     /// Starts a provider stream and returns immediately after validating and
@@ -79,15 +81,24 @@ impl ProviderService {
         cancellation: CancellationToken,
     ) -> Result<ChatStreamReceiver, CommandError> {
         let provider = request.provider;
+        let redactor = request.credentials.redactor();
         let adapter = adapter(provider);
         let builder = adapter
             .stream_request(&self.http, &request)
-            .map_err(|error| error.into_command(provider))?;
+            .map_err(|error| error.into_command(provider, &redactor))?;
         let requested_model = request.model;
         let (sender, receiver) = mpsc::channel(32);
 
         tokio::spawn(async move {
-            run_provider_stream(adapter, builder, requested_model, cancellation, sender).await;
+            run_provider_stream(
+                adapter,
+                builder,
+                requested_model,
+                cancellation,
+                sender,
+                redactor,
+            )
+            .await;
         });
 
         Ok(receiver)
@@ -309,6 +320,7 @@ async fn run_provider_stream(
     requested_model: String,
     cancellation: CancellationToken,
     sender: mpsc::Sender<Result<ChatStreamEvent, CommandError>>,
+    redactor: kiln_core::SensitiveDataRedactor,
 ) {
     let response = match cancellation.run(builder.send()).await {
         Err(_) => {
@@ -320,6 +332,7 @@ async fn run_provider_stream(
                 &sender,
                 network_error(error, adapter.kind()),
                 adapter.kind(),
+                &redactor,
             )
             .await;
             return;
@@ -339,6 +352,7 @@ async fn run_provider_stream(
                     &sender,
                     network_error(error, adapter.kind()),
                     adapter.kind(),
+                    &redactor,
                 )
                 .await;
                 return;
@@ -346,7 +360,7 @@ async fn run_provider_stream(
             Ok(Ok(body)) => body,
         };
         if let Err(error) = ensure_success(status, &body, adapter.kind()) {
-            send_provider_error(&sender, error, adapter.kind()).await;
+            send_provider_error(&sender, error, adapter.kind(), &redactor).await;
         }
         return;
     }
@@ -357,7 +371,15 @@ async fn run_provider_stream(
             .map(|bytes| bytes.to_vec())
             .map_err(|error| network_error(error, provider))
     });
-    pump_stream(adapter, chunks, requested_model, cancellation, sender).await;
+    pump_stream(
+        adapter,
+        chunks,
+        requested_model,
+        cancellation,
+        sender,
+        &redactor,
+    )
+    .await;
 }
 
 async fn pump_stream<S>(
@@ -366,6 +388,7 @@ async fn pump_stream<S>(
     requested_model: String,
     cancellation: CancellationToken,
     sender: mpsc::Sender<Result<ChatStreamEvent, CommandError>>,
+    redactor: &kiln_core::SensitiveDataRedactor,
 ) where
     S: Stream<Item = Result<Vec<u8>, ProviderError>> + Unpin,
 {
@@ -387,18 +410,18 @@ async fn pump_stream<S>(
             Some(Ok(chunk)) => match framer.push(&chunk) {
                 Ok(events) => events,
                 Err(error) => {
-                    send_provider_error(&sender, error, adapter.kind()).await;
+                    send_provider_error(&sender, error, adapter.kind(), redactor).await;
                     return;
                 }
             },
             Some(Err(error)) => {
-                send_provider_error(&sender, error, adapter.kind()).await;
+                send_provider_error(&sender, error, adapter.kind(), redactor).await;
                 return;
             }
             None => match framer.finish() {
                 Ok(events) => events,
                 Err(error) => {
-                    send_provider_error(&sender, error, adapter.kind()).await;
+                    send_provider_error(&sender, error, adapter.kind(), redactor).await;
                     return;
                 }
             },
@@ -408,7 +431,7 @@ async fn pump_stream<S>(
             let events = match adapter.parse_stream_data(&data, &mut state) {
                 Ok(events) => events,
                 Err(error) => {
-                    send_provider_error(&sender, error, adapter.kind()).await;
+                    send_provider_error(&sender, error, adapter.kind(), redactor).await;
                     return;
                 }
             };
@@ -431,6 +454,7 @@ async fn pump_stream<S>(
                         "The provider stream ended without a completion event.".to_owned(),
                     ),
                     adapter.kind(),
+                    redactor,
                 )
                 .await;
             }
@@ -451,8 +475,11 @@ async fn send_provider_error(
     sender: &mpsc::Sender<Result<ChatStreamEvent, CommandError>>,
     error: ProviderError,
     provider: ProviderKind,
+    redactor: &kiln_core::SensitiveDataRedactor,
 ) {
-    let _ = sender.send(Err(error.into_command(provider))).await;
+    let _ = sender
+        .send(Err(error.into_command(provider, redactor)))
+        .await;
 }
 
 #[derive(Debug, Default)]
@@ -839,6 +866,7 @@ mod tests {
             receiver: chunk_receiver,
         };
         let worker_cancellation = cancellation.clone();
+        let redactor = kiln_core::SensitiveDataRedactor::default();
 
         let worker = tokio::spawn(async move {
             pump_stream(
@@ -847,6 +875,7 @@ mod tests {
                 "qwen".to_owned(),
                 worker_cancellation,
                 event_sender,
+                &redactor,
             )
             .await;
         });
