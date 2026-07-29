@@ -5,6 +5,7 @@ pub const DEFAULT_READ_LINE_COUNT: u32 = 200;
 pub const MAX_READ_LINE_COUNT: u32 = 1_000;
 pub const DEFAULT_SEARCH_RESULTS: u32 = 100;
 pub const MAX_SEARCH_RESULTS: u32 = 500;
+pub const MAX_WRITE_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -17,6 +18,7 @@ pub enum RepositoryToolRequest {
     ReadFile(ReadFileRequest),
     SearchFiles(SearchFilesRequest),
     SearchText(SearchTextRequest),
+    WriteFile(WriteFileRequest),
 }
 
 impl RepositoryToolRequest {
@@ -25,6 +27,7 @@ impl RepositoryToolRequest {
             Self::ReadFile(_) => "read_file",
             Self::SearchFiles(_) => "search_files",
             Self::SearchText(_) => "search_text",
+            Self::WriteFile(_) => "write_file",
         }
     }
 
@@ -33,7 +36,40 @@ impl RepositoryToolRequest {
             Self::ReadFile(request) => request.validate(),
             Self::SearchFiles(request) => request.validate(),
             Self::SearchText(request) => request.validate(),
+            Self::WriteFile(request) => request.validate(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteFileRequest {
+    pub path: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256: Option<String>,
+}
+
+impl WriteFileRequest {
+    pub fn validate(&self) -> Result<(), ToolContractError> {
+        validate_text("writeFile.path", &self.path)?;
+        if self.content.len() > MAX_WRITE_BYTES {
+            return Err(ToolContractError::InvalidField {
+                field: "writeFile.content",
+                message: format!("content cannot exceed {MAX_WRITE_BYTES} UTF-8 bytes"),
+            });
+        }
+        if self
+            .expected_sha256
+            .as_ref()
+            .is_some_and(|hash| !is_sha256(hash))
+        {
+            return Err(ToolContractError::InvalidField {
+                field: "writeFile.expectedSha256",
+                message: "expected hash must be 64 hexadecimal characters".to_owned(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -134,6 +170,7 @@ pub enum RepositoryToolResult {
     ReadFile(ReadFileResult),
     SearchFiles(SearchFilesResult),
     SearchText(SearchTextResult),
+    WriteFile(WriteFileResult),
 }
 
 impl RepositoryToolResult {
@@ -174,6 +211,12 @@ impl RepositoryToolResult {
                     "."
                 }
             ),
+            Self::WriteFile(result) => format!(
+                "{} {} with an atomic workspace edit ({} UTF-8 bytes).",
+                if result.created { "Created" } else { "Updated" },
+                result.path,
+                result.bytes_written,
+            ),
         }
     }
 }
@@ -203,6 +246,19 @@ pub struct ReadFileResult {
     pub start_line: u32,
     pub end_line: u32,
     pub truncated: bool,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteFileResult {
+    pub path: String,
+    pub created: bool,
+    pub bytes_written: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_sha256: Option<String>,
+    pub after_sha256: String,
+    pub unified_diff: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -268,6 +324,10 @@ fn validate_text(field: &'static str, value: &str) -> Result<(), ToolContractErr
     }
 }
 
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,6 +363,31 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn write_requests_require_valid_optimistic_hashes_and_bounded_content() {
+        let request = RepositoryToolRequest::WriteFile(WriteFileRequest {
+            path: "src/lib.rs".to_owned(),
+            content: "updated\n".to_owned(),
+            expected_sha256: Some("not-a-hash".to_owned()),
+        });
+        assert!(request.validate().is_err());
+
+        let request = RepositoryToolRequest::WriteFile(WriteFileRequest {
+            path: "src/lib.rs".to_owned(),
+            content: "updated\n".to_owned(),
+            expected_sha256: Some("a".repeat(64)),
+        });
+        request.validate().unwrap();
+        assert_eq!(request.name(), "write_file");
+
+        let oversized = RepositoryToolRequest::WriteFile(WriteFileRequest {
+            path: "src/lib.rs".to_owned(),
+            content: "x".repeat(MAX_WRITE_BYTES + 1),
+            expected_sha256: Some("a".repeat(64)),
+        });
+        assert!(oversized.validate().is_err());
     }
 
     #[test]

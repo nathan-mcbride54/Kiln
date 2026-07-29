@@ -32,7 +32,7 @@ application boundaries; neither owns orchestration rules.
 ```text
 kiln-core       normalized commands, events, errors, and domain types
   ↑          ↑              ↑
-  │          │              └─ kiln-workspace  safe Git discovery, snapshots, and bounded read-only tools
+  │          │              └─ kiln-workspace  safe Git discovery, inspection, and atomic editing
   │          └─ kiln-storage  SQLite event log and replay
   └─ kiln-providers  OpenAI, Anthropic, and local HTTP adapters
 
@@ -200,6 +200,15 @@ bounded file reads or Git-aware searches. Raw source and search matches remain
 transient while safe proposal/result summaries enter the task event stream. See
 [the repository-tool guide](REPOSITORY_TOOLS.md) and
 [ADR 0006](decisions/0006-bounded-repository-inspection.md).
+
+Workspace edits use the same host and policy engine, but `write_file` is an
+`ask` action rather than a default allow. Existing files require the SHA-256
+returned by a complete read, Rust owns the native confirmation dialog, and the
+same-directory replacement is atomic. Approval, safe activity summary, and the
+diff artifact metadata are appended in causal order, while the full diff remains
+transient so edited secrets cannot enter durable task history. See
+[the safe-editing guide](SAFE_EDITING.md) and
+[ADR 0007](decisions/0007-native-confirmed-atomic-editing.md).
 
 The provider-free integration gate replays one canonical 25-event recording
 through both Rust and TypeScript. It covers message deltas, planning, approval,

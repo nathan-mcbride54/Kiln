@@ -136,7 +136,7 @@
     },
   ];
 
-  const files = [
+  let files = [
     { path: "desktop/src/App.svelte", additions: 18, deletions: 6 },
   ];
 
@@ -166,12 +166,20 @@
   let projectError = "";
   let openingProject = false;
   let inspectingWorkspace = false;
+  let editingWorkspace = false;
+  let editPath = "";
+  let editContent = "";
+  let editExpectedSha256: string | undefined;
+  let editLoadedPath: string | undefined;
+  let latestWriteDiff = "";
 
   $: messages = projection.messages;
   $: activity = projection.activity;
   $: inspector = projectInspector(projection);
   $: running = projection.running;
   $: activeTask = tasks.find((task) => task.id === activeTaskId) ?? tasks[0];
+  $: changeAdditions = files.reduce((total, file) => total + file.additions, 0);
+  $: changeDeletions = files.reduce((total, file) => total + file.deletions, 0);
   $: activeProvider =
     providers.find((provider) => provider.id === activeProviderId) ?? providers[0];
   $: connectedCount = providers.filter((provider) => provider.state === "ready").length;
@@ -224,6 +232,12 @@
 
   function selectProject(project: ProjectSnapshot): void {
     activeProject = project;
+    files = [];
+    editPath = "";
+    editContent = "";
+    editExpectedSha256 = undefined;
+    editLoadedPath = undefined;
+    latestWriteDiff = "";
     const provider = project.defaults.provider;
     if (provider && providers.some((candidate) => candidate.id === provider)) {
       activeProviderId = provider;
@@ -467,6 +481,107 @@
     } finally {
       inspectingWorkspace = false;
       window.setTimeout(() => (toast = ""), 3600);
+    }
+  }
+
+  async function loadFileForEdit(): Promise<void> {
+    if (!activeProject || !editPath.trim() || editingWorkspace) return;
+    editingWorkspace = true;
+    const toolCallId = `tool:${crypto.randomUUID()}`;
+    try {
+      const result = await executeVisibleRepositoryTool(
+        activeProject.projectId,
+        toolCallId,
+        {
+          tool: "read_file",
+          input: { path: editPath.trim(), lineCount: 1000 },
+        },
+        async (events) => {
+          await appendApplicationEvents(events, {
+            causationId: toolCallId,
+            correlationId: toolCallId,
+          });
+        },
+      );
+      if (result.tool === "read_file") {
+        if (result.result.truncated) {
+          throw new Error(
+            "This file exceeds the bounded editor view, so Kiln will not replace it as a whole.",
+          );
+        }
+        editPath = result.result.path;
+        editContent = result.result.content;
+        editExpectedSha256 = result.result.sha256;
+        editLoadedPath = result.result.path;
+        toast = `Loaded ${result.result.path} for version-checked editing`;
+      }
+    } catch (error) {
+      editContent = "";
+      editExpectedSha256 = undefined;
+      editLoadedPath = undefined;
+      toast =
+        error instanceof Error
+          ? `${error.message} If this path is genuinely new, you can still enter its initial contents.`
+          : "Kiln could not load this file.";
+    } finally {
+      editingWorkspace = false;
+      window.setTimeout(() => (toast = ""), 4200);
+    }
+  }
+
+  async function applyWorkspaceEdit(): Promise<void> {
+    if (!activeProject || !editPath.trim() || editingWorkspace) return;
+    editingWorkspace = true;
+    const toolCallId = `tool:${crypto.randomUUID()}`;
+    const requestedPath = editPath.trim();
+    try {
+      const result = await executeVisibleRepositoryTool(
+        activeProject.projectId,
+        toolCallId,
+        {
+          tool: "write_file",
+          input: {
+            path: requestedPath,
+            content: editContent,
+            expectedSha256:
+              editLoadedPath === requestedPath
+                ? editExpectedSha256
+                : undefined,
+          },
+        },
+        async (events) => {
+          await appendApplicationEvents(events, {
+            causationId: toolCallId,
+            correlationId: toolCallId,
+          });
+        },
+      );
+      if (result.tool === "write_file") {
+        latestWriteDiff = result.result.unifiedDiff;
+        const additions = latestWriteDiff
+          .split("\n")
+          .filter((line) => line.startsWith("+") && !line.startsWith("+++")).length;
+        const deletions = latestWriteDiff
+          .split("\n")
+          .filter((line) => line.startsWith("-") && !line.startsWith("---")).length;
+        files = [
+          { path: result.result.path, additions, deletions },
+          ...files.filter((file) => file.path !== result.result.path),
+        ];
+        editPath = result.result.path;
+        editExpectedSha256 = result.result.afterSha256;
+        editLoadedPath = result.result.path;
+        inspectorTab = "changes";
+        toast = `${result.result.created ? "Created" : "Updated"} ${result.result.path}; review the recorded diff`;
+      }
+    } catch (error) {
+      toast =
+        error instanceof Error
+          ? error.message
+          : "Kiln could not apply this workspace edit.";
+    } finally {
+      editingWorkspace = false;
+      window.setTimeout(() => (toast = ""), 4200);
     }
   }
 
@@ -872,9 +987,56 @@
                   <span>Working tree</span>
                 </div>
                 <div class="diff-total">
-                  <span>+{activeTask.additions}</span>
-                  <span>−{activeTask.deletions}</span>
+                  <span>+{changeAdditions}</span>
+                  <span>−{changeDeletions}</span>
                 </div>
+              </div>
+
+              <div class="workspace-edit-card">
+                <div>
+                  <strong>Version-checked workspace edit</strong>
+                  <span>Read first, edit locally, then confirm the exact path in a native dialog.</span>
+                </div>
+                <label>
+                  <span>Relative file path</span>
+                  <input
+                    bind:value={editPath}
+                    placeholder="src/example.ts"
+                    disabled={editingWorkspace || !activeProject}
+                  />
+                </label>
+                <div class="workspace-edit-actions">
+                  <button
+                    class="secondary-button"
+                    type="button"
+                    disabled={editingWorkspace || !activeProject || !editPath.trim()}
+                    onclick={() => void loadFileForEdit()}
+                  >
+                    Read current file
+                  </button>
+                  <span>
+                    {editExpectedSha256 && editLoadedPath === editPath.trim()
+                      ? "Current version locked"
+                      : "New file mode"}
+                  </span>
+                </div>
+                <label>
+                  <span>Complete UTF-8 contents</span>
+                  <textarea
+                    bind:value={editContent}
+                    rows="8"
+                    disabled={editingWorkspace || !activeProject}
+                    placeholder="The complete replacement contents…"
+                  ></textarea>
+                </label>
+                <button
+                  class="primary-button"
+                  type="button"
+                  disabled={editingWorkspace || !activeProject || !editPath.trim()}
+                  onclick={() => void applyWorkspaceEdit()}
+                >
+                  {editingWorkspace ? "Working…" : "Confirm and apply edit"}
+                </button>
               </div>
 
               {#if inspector.artifacts.length}
@@ -908,10 +1070,13 @@
                 <div class="diff-head">
                   <div>
                     <span class="file-icon">R</span>
-                    <strong>App.svelte</strong>
+                    <strong>{files[0]?.path.split("/").at(-1) ?? "No changed file"}</strong>
                   </div>
                   <span>•••</span>
                 </div>
+                {#if latestWriteDiff}
+                  <pre class="real-diff" aria-label="Real workspace diff">{latestWriteDiff}</pre>
+                {:else if !activeProject}
                 <div class="diff-code" aria-label="Code change preview">
                   <div class="code-line context">
                     <span class="line-number">41</span>
@@ -934,8 +1099,12 @@
                     <code>&lt;/div&gt;</code>
                   </div>
                 </div>
+                {:else}
+                  <p class="empty-diff">Apply an approved workspace edit to review its exact diff here.</p>
+                {/if}
               </div>
 
+              {#if !activeProject}
               <div class="review-actions">
                 <button class="secondary-button" type="button">Discard</button>
                 <button class="primary-button" type="button">
@@ -943,6 +1112,7 @@
                   <span>→</span>
                 </button>
               </div>
+              {/if}
             {:else}
               <div class="activity-list">
                 {#each activity as item, index}

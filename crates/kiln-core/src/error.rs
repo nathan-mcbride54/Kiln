@@ -14,6 +14,7 @@ pub enum ErrorCode {
     ProviderFailure,
     MalformedResponse,
     StorageFailure,
+    PermissionDenied,
     Cancelled,
 }
 

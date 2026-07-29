@@ -146,6 +146,14 @@ export type RepositoryToolRequest =
         caseSensitive?: boolean;
         maxResults?: number;
       };
+    }
+  | {
+      tool: "write_file";
+      input: {
+        path: string;
+        content: string;
+        expectedSha256?: string;
+      };
     };
 
 export interface FileMatch {
@@ -168,6 +176,7 @@ export type RepositoryToolResult =
         startLine: number;
         endLine: number;
         truncated: boolean;
+        sha256: string;
       };
     }
   | {
@@ -185,6 +194,17 @@ export type RepositoryToolResult =
         matches: TextMatch[];
         filesSearched: number;
         truncated: boolean;
+      };
+    }
+  | {
+      tool: "write_file";
+      result: {
+        path: string;
+        created: boolean;
+        bytesWritten: number;
+        beforeSha256?: string;
+        afterSha256: string;
+        unifiedDiff: string;
       };
     };
 

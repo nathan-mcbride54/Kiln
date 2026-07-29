@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "product": "Kiln",
-  "revision": "1.2",
+  "revision": "1.3",
   "lastReviewed": "2026-07-29",
   "currentHorizon": "H1",
   "releaseTargets": ["Windows", "Linux"],
@@ -17,8 +17,8 @@
     "deferred": "Intentionally postponed with the reason kept visible."
   },
   "focus": [
-    "H1-005",
-    "H1-006"
+    "H1-006",
+    "H1-007"
   ],
   "principles": [
     "Local-first ownership",
@@ -297,7 +297,7 @@
           "id": "H1-005",
           "title": "File editing and real diff review",
           "outcome": "Users can inspect every agent change before accepting it.",
-          "status": "planned",
+          "status": "done",
           "priority": "P0",
           "platforms": ["Windows", "Linux"],
           "dependencies": ["H1-003", "H1-004"],
@@ -306,8 +306,8 @@
             "Unified diff shows real changed files and hunks.",
             "An interrupted write cannot leave an unreported partial state."
           ],
-          "lastReviewed": "2026-07-28",
-          "changeNote": "Replaces the current fixture diff."
+          "lastReviewed": "2026-07-29",
+          "changeNote": "Completed in revision 1.3 with bounded whole-file replacement, read-version preconditions, resource-bound allow-once policy, native confirmation, atomic Windows/Unix replacement, durable approval and safe diff metadata, and a transient real desktop diff view."
         },
         {
           "id": "H1-006",
@@ -785,6 +785,13 @@
       "decision": "Normalize provider SSE behind ordered Tauri channels and one shared cancellation domain.",
       "reviewAt": "H2 crash-resume review",
       "reason": "Streaming must remain provider-independent, durable before display, and immune to late cancellation races."
+    },
+    {
+      "id": "DEC-009",
+      "status": "accepted",
+      "decision": "Require native confirmation and optimistic version checks for atomic direct-workspace edits.",
+      "reviewAt": "H2 worktree isolation",
+      "reason": "A frontend assertion must not grant write access, stale reads must not overwrite user work, and completed edits need durable review evidence."
     }
   ],
   "metrics": [
@@ -799,6 +806,18 @@
     "Installer and update success by platform"
   ],
   "changeLog": [
+    {
+      "date": "2026-07-29",
+      "revision": "1.3",
+      "summary": "Completed native-confirmed file editing and real diff review.",
+      "changes": [
+        "Added typed read hashes and bounded write_file requests with required optimistic concurrency for existing UTF-8 files.",
+        "Bound allow-once grants to the approved origin and exact resource, blocked Git metadata and symbolic-link replacement, and required a Rust-owned native confirmation.",
+        "Implemented synchronized same-directory temporary writes with atomic Windows and Unix replacement plus cancellation before the filesystem transition.",
+        "Recorded approval, safe tool summaries, and diff artifact metadata in causal order while keeping full diffs transient, and added a real desktop edit and diff-review surface.",
+        "Completed H1-005 and moved credential storage and provider diagnostics to the active focus."
+      ]
+    },
     {
       "date": "2026-07-29",
       "revision": "1.2",

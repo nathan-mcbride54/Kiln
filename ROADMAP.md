@@ -5,7 +5,7 @@
 
 | Revision | Last reviewed | Current horizon | Launch platforms | Later platforms |
 |---|---|---|---|---|
-| 1.2 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
+| 1.3 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
 
 Kiln measures progress through complete, reliable user journeys. An item is
 done only when every acceptance criterion passes on its target platforms.
@@ -14,8 +14,8 @@ done only when every acceptance criterion passes on its target platforms.
 
 | ID | Priority | Status | Outcome |
 |---|---:|---|---|
-| H1-005 | P0 | `planned` | Users can inspect every agent change before accepting it. |
 | H1-006 | P0 | `planned` | Provider credentials survive safely without entering application data. |
+| H1-007 | P1 | `planned` | A connection test explains exactly which behaviors a model endpoint supports. |
 
 **Next review trigger:** H1 exit-gate review or any change to provider, event, permission, or platform contracts.
 
@@ -24,7 +24,7 @@ done only when every acceptance criterion passes on its target platforms.
 | Horizon | Status | Progress | Outcome |
 |---|---|---:|---|
 | H0 — Product foundation | Complete | 100% | A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates. |
-| H1 — Connected vertical slice | In progress | 57% | One genuine repository task completes safely through each required provider type. |
+| H1 — Connected vertical slice | In progress | 71% | One genuine repository task completes safely through each required provider type. |
 | H2 — Reliable task workspace | Planned | 0% | Kiln supports concurrent daily work that survives restarts and preserves user changes. |
 | H3 — Open agent ecosystem | Planned | 0% | Existing agents and external tools operate through Kiln's task, event, and permission surfaces. |
 | H4 — Windows and Linux beta | Planned | 0% | A polished, installable daily driver for regular personal use. |
@@ -181,7 +181,7 @@ Last reviewed 2026-07-29. Completed in revision 1.2 with green hosted Windows an
 | H1-002 | P0 | `done` | Windows, Linux | H0-006, H0-008 | Open and remember a Git repository |
 | H1-003 | P0 | `done` | Windows, Linux | H1-002, H1-004 | Read-only file and search tools |
 | H1-004 | P0 | `done` | All | H0-007 | Central permission engine |
-| H1-005 | P0 | `planned` | Windows, Linux | H1-003, H1-004 | File editing and real diff review |
+| H1-005 | P0 | `done` | Windows, Linux | H1-003, H1-004 | File editing and real diff review |
 | H1-006 | P0 | `planned` | Windows, Linux | H0-006 | OS credential storage and redaction pipeline |
 | H1-007 | P1 | `planned` | Windows, Linux | H1-001 | Provider diagnostics and capability discovery |
 
@@ -236,7 +236,7 @@ Users can inspect every agent change before accepting it.
 - Unified diff shows real changed files and hunks.
 - An interrupted write cannot leave an unreported partial state.
 
-Last reviewed 2026-07-28. Replaces the current fixture diff.
+Last reviewed 2026-07-29. Completed in revision 1.3 with bounded whole-file replacement, read-version preconditions, resource-bound allow-once policy, native confirmation, atomic Windows/Unix replacement, durable approval and safe diff metadata, and a transient real desktop diff view.
 
 #### H1-006 — OS credential storage and redaction pipeline
 
@@ -589,6 +589,7 @@ Last reviewed 2026-07-28. Not committed.
 | DEC-006 | accepted | Use SQLite as an immutable local event log with one H0 writer. | H2 performance review | Kiln needs transactional restart and replay without requiring an external service. |
 | DEC-007 | accepted | Route every native and extension action through one guarded permission engine. | H3 extension exit | Allow, ask, deny, and ephemeral approval semantics must not vary by transport or tool source. |
 | DEC-008 | accepted | Normalize provider SSE behind ordered Tauri channels and one shared cancellation domain. | H2 crash-resume review | Streaming must remain provider-independent, durable before display, and immune to late cancellation races. |
+| DEC-009 | accepted | Require native confirmation and optimistic version checks for atomic direct-workspace edits. | H2 worktree isolation | A frontend assertion must not grant write access, stale reads must not overwrite user work, and completed edits need durable review evidence. |
 
 ## Success metrics
 
@@ -617,6 +618,16 @@ Last reviewed 2026-07-28. Not committed.
 - Progress is measured by completed user journeys and reliability gates, not feature count.
 
 ## Change history
+
+### 2026-07-29 — revision 1.3
+
+Completed native-confirmed file editing and real diff review.
+
+- Added typed read hashes and bounded write_file requests with required optimistic concurrency for existing UTF-8 files.
+- Bound allow-once grants to the approved origin and exact resource, blocked Git metadata and symbolic-link replacement, and required a Rust-owned native confirmation.
+- Implemented synchronized same-directory temporary writes with atomic Windows and Unix replacement plus cancellation before the filesystem transition.
+- Recorded approval, safe tool summaries, and diff artifact metadata in causal order while keeping full diffs transient, and added a real desktop edit and diff-review surface.
+- Completed H1-005 and moved credential storage and provider diagnostics to the active focus.
 
 ### 2026-07-29 — revision 1.2
 

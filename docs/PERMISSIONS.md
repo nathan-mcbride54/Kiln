@@ -67,7 +67,11 @@ closure runs.
 Tests use a side-effect counter to prove denied native and extension-origin
 actions never invoke their operation. H1-003 repository tools now use this
 guarded entry point for both the named tool and canonical read/search path.
-H1-005 writes must preserve the same two-stage check.
+
+H1-005 keeps `write_file` and the exact canonical write path at `ask`. Rust
+shows a native path-specific confirmation, then inserts allow-once grants bound
+to the approved origin and resource. A caller cannot substitute another path
+under the same action identifier, and the grant is consumed at execution.
 
 ## Current limit
 
