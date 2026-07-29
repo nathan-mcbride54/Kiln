@@ -71,6 +71,11 @@ Missing or provider-mismatched references fail before any provider network
 request. Replacing a provider credential writes the new profile and alias
 before deleting the previous profile.
 
+Provider-category binding is implemented now. Exact origin binding for a custom
+compatible profile is an explicit H1-007 gate and is not yet a current
+guarantee; see
+[ADR 0009](decisions/0009-origin-bound-provider-profiles.md).
+
 ## Validation
 
 The workspace tests prove:

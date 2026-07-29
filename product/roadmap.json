@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "product": "Kiln",
-  "revision": "1.4",
+  "revision": "1.5",
   "lastReviewed": "2026-07-29",
   "currentHorizon": "H1",
   "releaseTargets": ["Windows", "Linux"],
@@ -17,7 +17,8 @@
     "deferred": "Intentionally postponed with the reason kept visible."
   },
   "focus": [
-    "H1-007"
+    "H1-007",
+    "H1-008"
   ],
   "principles": [
     "Local-first ownership",
@@ -329,16 +330,32 @@
           "title": "Provider diagnostics and capability discovery",
           "outcome": "A connection test explains exactly which behaviors a model endpoint supports.",
           "status": "planned",
-          "priority": "P1",
+          "priority": "P0",
           "platforms": ["Windows", "Linux"],
-          "dependencies": ["H1-001"],
+          "dependencies": ["H1-001", "H1-006"],
           "acceptanceCriteria": [
             "Reachability, authentication, model discovery, streaming, and tool compatibility report separately.",
             "The UI follows advertised capabilities instead of provider-name conditions.",
-            "Cloud gateway policy is explicit and warns before sending credentials to a custom origin."
+            "First-party cloud profiles remain pinned to official origins; compatible custom profiles bind credentials to an exact normalized origin and warn before that destination changes."
           ],
-          "lastReviewed": "2026-07-28",
-          "changeNote": "Includes the unresolved custom cloud-endpoint policy."
+          "lastReviewed": "2026-07-29",
+          "changeNote": "Promoted to P0 in revision 1.5 because the provider-driven task loop needs truthful tool capability reports and origin-bound credential routing."
+        },
+        {
+          "id": "H1-008",
+          "title": "Provider-driven repository task loop",
+          "outcome": "A provider can inspect, edit, and finish one real repository task through the same policy-checked loop.",
+          "status": "planned",
+          "priority": "P0",
+          "platforms": ["Windows", "Linux"],
+          "dependencies": ["H1-003", "H1-004", "H1-005", "H1-006", "H1-007"],
+          "acceptanceCriteria": [
+            "OpenAI, Anthropic, and local compatible adapters normalize tool proposals and tool results without exposing provider payloads to the interface.",
+            "The Rust orchestration loop routes every proposed tool through the central permission engine and returns results to the provider in causal order.",
+            "One recorded read-edit-review fixture completes through all three providers, while denied and cancelled calls produce no side effect."
+          ],
+          "lastReviewed": "2026-07-29",
+          "changeNote": "Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools."
         }
       ]
     },
@@ -726,6 +743,13 @@
       "status": "mitigated",
       "risk": "Provider bytes arriving after cancellation could rewrite a terminal turn or leave background work active.",
       "mitigation": "H1-001 shares cancellation across HTTP and jobs, gives cancellation race priority, stops the channel at one terminal batch, and blocks late mutations in both projectors."
+    },
+    {
+      "id": "RISK-008",
+      "severity": "high",
+      "status": "open",
+      "risk": "Manual workspace tools could be mistaken for a complete provider-driven task loop, causing H1 to close without its stated user journey.",
+      "mitigation": "H1-008 now explicitly gates H1 on one policy-checked read-edit-review loop and a common fixture across OpenAI, Anthropic, and a local compatible provider."
     }
   ],
   "decisions": [
@@ -738,10 +762,10 @@
     },
     {
       "id": "DEC-002",
-      "status": "open",
-      "decision": "Whether cloud providers may use custom gateway origins.",
-      "reviewAt": "Before H1-007",
-      "reason": "Gateway flexibility must not make credential destination ambiguous."
+      "status": "accepted",
+      "decision": "Pin first-party cloud profiles to official origins and require separate origin-bound compatible profiles for custom gateways.",
+      "reviewAt": "H3 provider-profile expansion",
+      "reason": "A stored credential must have an unambiguous destination; changing a compatible endpoint requires an explicit warning and credential rebind."
     },
     {
       "id": "DEC-003",
@@ -812,6 +836,18 @@
     "Installer and update success by platform"
   ],
   "changeLog": [
+    {
+      "date": "2026-07-29",
+      "revision": "1.5",
+      "summary": "Corrected the H1 critical path after the credential-storage milestone review.",
+      "changes": [
+        "Found that H1's provider-driven repository-task exit gate had no implementation item beyond manually invoked workspace tools.",
+        "Added H1-008 as a P0 provider-driven task loop with normalized tool calls, central policy routing, causal results, and a cross-provider read-edit-review fixture.",
+        "Promoted H1-007 diagnostics to P0, made secure credential profiles a dependency, and kept diagnostics ahead of the task loop.",
+        "Resolved DEC-002 by pinning first-party cloud profiles to official origins and requiring origin-bound compatible profiles plus an explicit destination-change warning.",
+        "Added RISK-008 so H1 cannot be declared complete until the genuine provider-driven user journey passes."
+      ]
+    },
     {
       "date": "2026-07-29",
       "revision": "1.4",
