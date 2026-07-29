@@ -7,10 +7,11 @@ use std::{
 
 pub use kiln_core::{
     ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, CommandError,
-    ConnectionTestRequest, ConnectionTestResponse, CredentialBackendKind, CredentialProfileRef,
-    CredentialSaveRequest, ErrorCode, EventEnvelope, ProviderCapabilities,
-    ProviderCredentialProfile, ProviderCredentials, ProviderKind, ProviderProtocol, SecretString,
-    StreamId, TokenUsage,
+    ConnectionProbe, ConnectionProbeKind, ConnectionProbeStatus, ConnectionTestOverall,
+    ConnectionTestRequest, ConnectionTestResponse, CredentialBackendKind, CredentialBindingState,
+    CredentialProfileRef, CredentialSaveRequest, ErrorCode, EventEnvelope, ProviderCapabilities,
+    ProviderCredentialProfile, ProviderCredentials, ProviderKind, ProviderOrigin,
+    ProviderOriginError, ProviderProtocol, SecretString, StreamId, TokenUsage,
 };
 use kiln_platform::{CancellationToken, OsCredentialStore, SystemClock};
 use kiln_providers::ProviderService;

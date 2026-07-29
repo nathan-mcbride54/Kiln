@@ -1368,6 +1368,10 @@ button:disabled {
   border-color: color-mix(in srgb, var(--provider-color) 28%, #30312b);
 }
 
+.provider-card-limited {
+  border-color: #4a4331;
+}
+
 .provider-card-head {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
@@ -1410,9 +1414,15 @@ button:disabled {
   color: #d8877f;
 }
 
-.provider-status-testing {
+.provider-status-testing,
+.provider-status-verifying {
   border-color: #57492f;
   color: #c9ab68;
+}
+
+.provider-status-limited {
+  border-color: #544a31;
+  color: #bda264;
 }
 
 .provider-card label {
@@ -1461,17 +1471,124 @@ button:disabled {
   color: #494944;
 }
 
+.origin-warning {
+  display: grid;
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1px solid #5b4730;
+  border-radius: 7px;
+  background: #1d1912;
+  color: #9b8a68;
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 1.55;
+  gap: 3px;
+}
+
+.origin-warning strong {
+  color: #d1af70;
+  font-size: 8px;
+}
+
+.probe-list {
+  overflow: hidden;
+  margin-top: 16px;
+  border: 1px solid #292a25;
+  border-radius: 8px;
+  background: #10110f;
+}
+
+.probe-row {
+  display: grid;
+  min-height: 31px;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  align-items: start;
+  padding: 8px 10px;
+  color: #74726b;
+  font-size: 8px;
+  gap: 8px;
+}
+
+.probe-row + .probe-row {
+  border-top: 1px solid #22231f;
+}
+
+.probe-row strong {
+  margin-top: 1px;
+  color: #5f5e58;
+  font-family: var(--mono);
+  font-size: 7px;
+  font-weight: 570;
+}
+
+.probe-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.probe-copy small {
+  color: #575650;
+  font-family: var(--mono);
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.probe-indicator {
+  width: 5px;
+  height: 5px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: #4d4d48;
+}
+
+.probe-result-passed .probe-indicator {
+  background: #7fa474;
+  box-shadow: 0 0 6px rgb(127 164 116 / 32%);
+}
+
+.probe-result-failed .probe-indicator {
+  background: var(--danger);
+}
+
+.probe-result-unsupported .probe-indicator {
+  border: 1px solid #77736a;
+  background: transparent;
+}
+
+.probe-result-inconclusive .probe-indicator {
+  background: #b19762;
+}
+
+.probe-result-passed strong,
+.matrix-value.probe-result-passed {
+  color: #7fa474;
+}
+
+.probe-result-failed strong,
+.matrix-value.probe-result-failed {
+  color: #cf7b72;
+}
+
+.probe-result-inconclusive strong,
+.matrix-value.probe-result-inconclusive {
+  color: #b19762;
+}
+
+.probe-result-unsupported strong,
+.matrix-value.probe-result-unsupported {
+  color: #8a8780;
+}
+
 .provider-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   margin-top: 17px;
   padding-top: 14px;
   border-top: 1px solid var(--line-soft);
-  gap: 10px;
+  gap: 12px;
 }
 
-.provider-card-footer > div {
+.connection-summary {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -1481,7 +1598,7 @@ button:disabled {
   gap: 6px;
 }
 
-.provider-card-footer > div > span:last-child {
+.connection-summary > span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1504,15 +1621,26 @@ button:disabled {
   background: var(--danger);
 }
 
-.connection-light-testing {
+.connection-light-limited {
+  background: #b19762;
+}
+
+.connection-light-testing,
+.connection-light-verifying {
   background: #d0ad61;
   animation: agent-pulse 700ms infinite alternate;
 }
 
+.provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .provider-card-footer button {
-  min-width: 96px;
+  min-width: 116px;
   height: 29px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   padding: 0 9px;
   border: 1px solid #3a3b34;
   border-radius: 6px;
@@ -1525,6 +1653,24 @@ button:disabled {
 .provider-card-footer button:hover {
   border-color: color-mix(in srgb, var(--provider-color) 42%, #3a3b34);
   color: var(--ink);
+}
+
+.provider-card-footer .verify-button {
+  border-color: color-mix(in srgb, var(--provider-color) 30%, #3a3b34);
+  background: color-mix(in srgb, var(--provider-color) 8%, #20211d);
+}
+
+.provider-card-footer button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.verification-note {
+  margin: 10px 0 0;
+  color: #5e5d57;
+  font-family: var(--mono);
+  font-size: 7px;
+  line-height: 1.55;
 }
 
 .capability-matrix {
@@ -1977,7 +2123,10 @@ button:disabled {
     margin-top: 0;
   }
 
-  .provider-card-footer {
+  .provider-card .origin-warning,
+  .provider-card .probe-list,
+  .provider-card-footer,
+  .provider-card .verification-note {
     grid-column: 2 / -1;
   }
 }

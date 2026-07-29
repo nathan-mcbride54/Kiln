@@ -10,6 +10,8 @@ license.workspace = true
 getrandom = "0.2"
 hex.workspace = true
 kiln-core = { path = "../kiln-core" }
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

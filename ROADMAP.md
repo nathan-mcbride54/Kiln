@@ -5,7 +5,7 @@
 
 | Revision | Last reviewed | Current horizon | Launch platforms | Later platforms |
 |---|---|---|---|---|
-| 1.5 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
+| 1.6 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
 
 Kiln measures progress through complete, reliable user journeys. An item is
 done only when every acceptance criterion passes on its target platforms.
@@ -14,7 +14,6 @@ done only when every acceptance criterion passes on its target platforms.
 
 | ID | Priority | Status | Outcome |
 |---|---:|---|---|
-| H1-007 | P0 | `planned` | A connection test explains exactly which behaviors a model endpoint supports. |
 | H1-008 | P0 | `planned` | A provider can inspect, edit, and finish one real repository task through the same policy-checked loop. |
 
 **Next review trigger:** H1 exit-gate review or any change to provider, event, permission, or platform contracts.
@@ -24,7 +23,7 @@ done only when every acceptance criterion passes on its target platforms.
 | Horizon | Status | Progress | Outcome |
 |---|---|---:|---|
 | H0 — Product foundation | Complete | 100% | A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates. |
-| H1 — Connected vertical slice | In progress | 75% | One genuine repository task completes safely through each required provider type. |
+| H1 — Connected vertical slice | In progress | 88% | One genuine repository task completes safely through each required provider type. |
 | H2 — Reliable task workspace | Planned | 0% | Kiln supports concurrent daily work that survives restarts and preserves user changes. |
 | H3 — Open agent ecosystem | Planned | 0% | Existing agents and external tools operate through Kiln's task, event, and permission surfaces. |
 | H4 — Windows and Linux beta | Planned | 0% | A polished, installable daily driver for regular personal use. |
@@ -183,7 +182,7 @@ Last reviewed 2026-07-29. Completed in revision 1.2 with green hosted Windows an
 | H1-004 | P0 | `done` | All | H0-007 | Central permission engine |
 | H1-005 | P0 | `done` | Windows, Linux | H1-003, H1-004 | File editing and real diff review |
 | H1-006 | P0 | `done` | Windows, Linux | H0-006 | OS credential storage and redaction pipeline |
-| H1-007 | P0 | `planned` | Windows, Linux | H1-001, H1-006 | Provider diagnostics and capability discovery |
+| H1-007 | P0 | `done` | Windows, Linux | H1-001, H1-006 | Provider diagnostics and capability discovery |
 | H1-008 | P0 | `planned` | Windows, Linux | H1-003, H1-004, H1-005, H1-006, H1-007 | Provider-driven repository task loop |
 
 ### Acceptance criteria
@@ -257,7 +256,7 @@ A connection test explains exactly which behaviors a model endpoint supports.
 - The UI follows advertised capabilities instead of provider-name conditions.
 - First-party cloud profiles remain pinned to official origins; compatible custom profiles bind credentials to an exact normalized origin and warn before that destination changes.
 
-Last reviewed 2026-07-29. Promoted to P0 in revision 1.5 because the provider-driven task loop needs truthful tool capability reports and origin-bound credential routing.
+Last reviewed 2026-07-29. Completed in revision 1.6 with typed five-probe reports, explicit model-scoped streaming and tool verification, capability-driven controls, fixed cloud destinations, versioned exact-origin credential bindings with legacy rebind handling, and bounded cross-protocol diagnostic tests.
 
 #### H1-008 — Provider-driven repository task loop
 
@@ -267,7 +266,7 @@ A provider can inspect, edit, and finish one real repository task through the sa
 - The Rust orchestration loop routes every proposed tool through the central permission engine and returns results to the provider in causal order.
 - One recorded read-edit-review fixture completes through all three providers, while denied and cancelled calls produce no side effect.
 
-Last reviewed 2026-07-29. Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools.
+Last reviewed 2026-07-29. Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools. Re-reviewed in revision 1.6: the first slice is one provider-neutral, bounded tool-turn codec shared by diagnostics and production, followed by a Rust-owned loop that removes live causality and tool lifecycle synthesis from Svelte.
 
 ### Exit gates
 
@@ -581,9 +580,9 @@ Last reviewed 2026-07-28. Not committed.
 | ID | Severity | Status | Risk | Mitigation |
 |---|---|---|---|---|
 | RISK-001 | high | mitigated | The desktop frontend is not yet proven from a clean dependency install. | Revision 1.2 proves clean hosted Windows and Ubuntu dependency installs, checks, production builds, and complete Rust workspace tests. |
-| RISK-002 | medium | mitigated | Future orchestration work could regress into the desktop transport layer. | The workspace now isolates core, providers, platform, and Git workspace contracts from kiln-tauri; keep Tauri-free dependency checks in CI. |
-| RISK-003 | high | mitigated | Credentials and upstream payloads may leak without OS storage and centralized redaction. | H1-006 stores provider-bound opaque references in application data, keeps secret values in the OS vault, zeroizes Rust buffers where practical, and applies one tested redactor to provider errors and persistence boundaries. |
-| RISK-004 | medium | mitigating | Provider defaults and roadmap content can drift across Rust, web, desktop, and documentation. | H0-005 establishes generated roadmap outputs; provider-contract generation remains H1-007. |
+| RISK-002 | medium | mitigating | Live orchestration in the desktop interface can split causality, policy, persistence, and cancellation from Rust ownership. | Core, provider, platform, workspace, and storage contracts are Tauri-free, but the live desktop still synthesizes provider and tool lifecycle events. H1-008 must move task identity, causality, policy routing, persistence order, and cancellation into a Tauri-free Rust orchestrator before this risk can close. |
+| RISK-003 | high | mitigated | Credentials and upstream payloads may leak without OS storage and centralized redaction. | H1-006 keeps secret values in the OS vault behind opaque references and one tested redaction boundary. H1-007 additionally pins cloud destinations, binds compatible credentials to exact normalized origins, rejects insecure non-loopback credential transport, and disables redirects. |
+| RISK-004 | medium | mitigating | Provider defaults and roadmap content can drift across Rust, web, desktop, and documentation. | H0-005 generates every roadmap view from one source. H1-007 now hydrates desktop controls from Rust capability descriptors and tests pinned provider destinations; the hosted preview still maintains a separately tested contract mirror, so full cross-surface provider-contract generation remains open. |
 | RISK-005 | medium | mitigated | Windows works locally while Linux behavior remains an architectural claim. | Windows and Ubuntu quality jobs now pass on hosted runners and are both required before main can merge. |
 | RISK-006 | medium | mitigated | Concurrent writers or corrupt event order could make restart projections untruthful. | H0-008 uses one transactional SQLite writer, database uniqueness constraints, durable-tail checks, and validated ordered replay. |
 | RISK-007 | high | mitigated | Provider bytes arriving after cancellation could rewrite a terminal turn or leave background work active. | H1-001 shares cancellation across HTTP and jobs, gives cancellation race priority, stops the channel at one terminal batch, and blocks late mutations in both projectors. |
@@ -631,6 +630,17 @@ Last reviewed 2026-07-28. Not committed.
 - Progress is measured by completed user journeys and reliability gates, not feature count.
 
 ## Change history
+
+### 2026-07-29 — revision 1.6
+
+Completed provider diagnostics and destination-bound capability discovery.
+
+- Added one normalized five-probe report for reachability, authentication, model discovery, streaming, and structured tool compatibility, with capability-driven provider controls in the desktop and matching hosted-preview behavior.
+- Separated non-generating model discovery from explicit model verification, using only small synthetic streaming and no-op tool prompts that never include repository content or execute the emitted tool.
+- Pinned first-party cloud profiles to official origins and upgraded OS-vault aliases to versioned exact-origin bindings with visible destination-change and legacy-rebind handling.
+- Rejected credential-bearing cleartext traffic outside loopback, disabled redirects, bounded response bodies and model identifiers, applied per-probe deadlines, and avoided automatic retries.
+- Completed H1-007 and moved the active critical path to H1-008, which remains the gate for a real provider-driven, policy-checked repository task loop.
+- Re-reviewed H1-008, selected provider-neutral tool-turn codecs followed by a Rust-owned loop as the next slice, and reopened the desktop-orchestration boundary risk until live event causality leaves Svelte.
 
 ### 2026-07-29 — revision 1.5
 

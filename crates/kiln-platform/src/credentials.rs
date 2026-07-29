@@ -1,14 +1,17 @@
 use std::sync::{Arc, Mutex};
 
 use kiln_core::{
-    CredentialBackendKind, CredentialProfileRef, ProviderCredentialProfile, ProviderKind,
-    SecretString,
+    CredentialBackendKind, CredentialBindingState, CredentialProfileRef, ProviderCredentialProfile,
+    ProviderKind, ProviderOrigin, SecretString,
 };
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 const SERVICE_NAME: &str = "dev.kiln.credentials";
 const PROFILE_PREFIX: &str = "profile:";
 const ALIAS_PREFIX: &str = "provider:";
+const ALIAS_ENVELOPE_VERSION: u8 = 2;
+const MAX_ALIAS_ENVELOPE_BYTES: usize = 512;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum CredentialStoreError {
@@ -18,10 +21,47 @@ pub enum CredentialStoreError {
     NotFound,
     #[error("the credential profile does not belong to the selected provider")]
     ProviderMismatch,
+    #[error("the credential profile is bound to a different provider destination")]
+    DestinationMismatch,
+    #[error("the credential profile must be rebound to a provider destination")]
+    RebindRequired,
     #[error("the credential value cannot be blank")]
     BlankSecret,
     #[error("a secure credential reference could not be generated")]
     ReferenceGeneration,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AliasEnvelope<'a> {
+    v: u8,
+    credential_ref: &'a CredentialProfileRef,
+    origin: &'a ProviderOrigin,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AliasEnvelopeWire {
+    v: u8,
+    credential_ref: CredentialProfileRef,
+    origin: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StoredAlias {
+    Bound {
+        credential_ref: CredentialProfileRef,
+        origin: ProviderOrigin,
+    },
+    Legacy(CredentialProfileRef),
+}
+
+impl StoredAlias {
+    fn credential_ref(&self) -> &CredentialProfileRef {
+        match self {
+            Self::Bound { credential_ref, .. } | Self::Legacy(credential_ref) => credential_ref,
+        }
+    }
 }
 
 trait CredentialBackend: Send + Sync {
@@ -71,15 +111,26 @@ impl OsCredentialStore {
         let mut profiles = Vec::new();
 
         for provider in ProviderKind::ALL {
-            let Some(reference) = backend.get(&alias_account(provider))? else {
+            let Some(alias) = backend.get(&alias_account(provider))? else {
                 continue;
             };
-            let credential_ref = CredentialProfileRef::new(reference.expose_secret())
-                .map_err(|_| CredentialStoreError::Unavailable)?;
+            let alias = parse_alias(alias.expose_secret())?;
+            let (origin, binding_state) = match &alias {
+                StoredAlias::Bound { origin, .. } => {
+                    validate_fixed_origin(provider, origin)?;
+                    (Some(origin.clone()), CredentialBindingState::Bound)
+                }
+                StoredAlias::Legacy(_) => match provider.fixed_official_origin() {
+                    Some(origin) => (Some(origin), CredentialBindingState::Bound),
+                    None => (None, CredentialBindingState::RebindRequired),
+                },
+            };
             profiles.push(ProviderCredentialProfile {
                 provider,
-                credential_ref,
+                credential_ref: alias.credential_ref().clone(),
                 backend: backend.kind(),
+                origin,
+                binding_state,
             });
         }
 
@@ -89,39 +140,42 @@ impl OsCredentialStore {
     pub fn save(
         &self,
         provider: ProviderKind,
+        origin: &ProviderOrigin,
         secret: &SecretString,
     ) -> Result<ProviderCredentialProfile, CredentialStoreError> {
         if secret.is_blank() {
             return Err(CredentialStoreError::BlankSecret);
         }
+        validate_fixed_origin(provider, origin)?;
 
         let credential_ref = generate_reference()?;
         let profile_account_name = profile_account(&credential_ref);
         let alias_account_name = alias_account(provider);
-        let reference_secret = SecretString::new(credential_ref.as_str());
+        let alias_secret = encode_alias(&credential_ref, origin)?;
         let backend = self
             .backend
             .lock()
             .map_err(|_| CredentialStoreError::Unavailable)?;
-        let prior_reference = backend.get(&alias_account_name)?;
+        let prior_alias_secret = backend.get(&alias_account_name)?;
+        let prior_alias = prior_alias_secret
+            .as_ref()
+            .map(|alias| parse_alias(alias.expose_secret()))
+            .transpose()?;
 
         backend.set(&profile_account_name, secret)?;
-        if backend.set(&alias_account_name, &reference_secret).is_err() {
+        if backend.set(&alias_account_name, &alias_secret).is_err() {
             let _ = backend.delete(&profile_account_name);
             return Err(CredentialStoreError::Unavailable);
         }
 
-        if let Some(prior_reference) = prior_reference {
-            let prior_profile = CredentialProfileRef::new(prior_reference.expose_secret());
-            let cleanup_failed = match prior_profile {
-                Ok(prior_profile) if prior_profile != credential_ref => {
-                    backend.delete(&profile_account(&prior_profile)).is_err()
-                }
-                Ok(_) => false,
-                Err(_) => true,
-            };
+        if let Some(prior_alias) = prior_alias {
+            let prior_profile = prior_alias.credential_ref();
+            let cleanup_failed = prior_profile != &credential_ref
+                && backend.delete(&profile_account(prior_profile)).is_err();
             if cleanup_failed {
-                let _ = backend.set(&alias_account_name, &prior_reference);
+                if let Some(prior_alias_secret) = prior_alias_secret.as_ref() {
+                    let _ = backend.set(&alias_account_name, prior_alias_secret);
+                }
                 let _ = backend.delete(&profile_account_name);
                 return Err(CredentialStoreError::Unavailable);
             }
@@ -131,23 +185,41 @@ impl OsCredentialStore {
             provider,
             credential_ref,
             backend: backend.kind(),
+            origin: Some(origin.clone()),
+            binding_state: CredentialBindingState::Bound,
         })
     }
 
     pub fn resolve(
         &self,
         provider: ProviderKind,
+        origin: &ProviderOrigin,
         credential_ref: &CredentialProfileRef,
     ) -> Result<SecretString, CredentialStoreError> {
+        validate_fixed_origin(provider, origin)?;
         let backend = self
             .backend
             .lock()
             .map_err(|_| CredentialStoreError::Unavailable)?;
-        let bound_reference = backend
+        let alias = backend
             .get(&alias_account(provider))?
             .ok_or(CredentialStoreError::NotFound)?;
-        if bound_reference.expose_secret() != credential_ref.as_str() {
+        let alias = parse_alias(alias.expose_secret())?;
+        if alias.credential_ref() != credential_ref {
             return Err(CredentialStoreError::ProviderMismatch);
+        }
+        match alias {
+            StoredAlias::Bound {
+                origin: bound_origin,
+                ..
+            } if bound_origin != *origin => {
+                return Err(CredentialStoreError::DestinationMismatch);
+            }
+            StoredAlias::Bound { .. } => {}
+            StoredAlias::Legacy(_) if provider.fixed_official_origin().is_none() => {
+                return Err(CredentialStoreError::RebindRequired);
+            }
+            StoredAlias::Legacy(_) => {}
         }
 
         backend
@@ -164,16 +236,70 @@ impl OsCredentialStore {
             .backend
             .lock()
             .map_err(|_| CredentialStoreError::Unavailable)?;
-        let bound_reference = backend
+        let alias = backend
             .get(&alias_account(provider))?
             .ok_or(CredentialStoreError::NotFound)?;
-        if bound_reference.expose_secret() != credential_ref.as_str() {
+        let alias = parse_alias(alias.expose_secret())?;
+        if alias.credential_ref() != credential_ref {
             return Err(CredentialStoreError::ProviderMismatch);
         }
 
         backend.delete(&profile_account(credential_ref))?;
         backend.delete(&alias_account(provider))
     }
+}
+
+fn validate_fixed_origin(
+    provider: ProviderKind,
+    origin: &ProviderOrigin,
+) -> Result<(), CredentialStoreError> {
+    if provider
+        .fixed_official_origin()
+        .is_some_and(|official| official != *origin)
+    {
+        return Err(CredentialStoreError::DestinationMismatch);
+    }
+    Ok(())
+}
+
+fn encode_alias(
+    credential_ref: &CredentialProfileRef,
+    origin: &ProviderOrigin,
+) -> Result<SecretString, CredentialStoreError> {
+    let encoded = serde_json::to_string(&AliasEnvelope {
+        v: ALIAS_ENVELOPE_VERSION,
+        credential_ref,
+        origin,
+    })
+    .map_err(|_| CredentialStoreError::Unavailable)?;
+    if encoded.len() > MAX_ALIAS_ENVELOPE_BYTES {
+        return Err(CredentialStoreError::Unavailable);
+    }
+    Ok(SecretString::new(encoded))
+}
+
+fn parse_alias(value: &str) -> Result<StoredAlias, CredentialStoreError> {
+    if value.len() > MAX_ALIAS_ENVELOPE_BYTES {
+        return Err(CredentialStoreError::Unavailable);
+    }
+    if let Ok(credential_ref) = CredentialProfileRef::new(value) {
+        return Ok(StoredAlias::Legacy(credential_ref));
+    }
+
+    let envelope: AliasEnvelopeWire =
+        serde_json::from_str(value).map_err(|_| CredentialStoreError::Unavailable)?;
+    if envelope.v != ALIAS_ENVELOPE_VERSION {
+        return Err(CredentialStoreError::Unavailable);
+    }
+    let origin = ProviderOrigin::from_base_url(&envelope.origin)
+        .map_err(|_| CredentialStoreError::Unavailable)?;
+    if origin.as_str() != envelope.origin {
+        return Err(CredentialStoreError::Unavailable);
+    }
+    Ok(StoredAlias::Bound {
+        credential_ref: envelope.credential_ref,
+        origin,
+    })
 }
 
 fn generate_reference() -> Result<CredentialProfileRef, CredentialStoreError> {
@@ -297,18 +423,29 @@ mod tests {
         )
     }
 
+    fn origin(base_url: &str) -> ProviderOrigin {
+        ProviderOrigin::from_base_url(base_url).unwrap()
+    }
+
     #[test]
     fn save_lists_resolves_and_deletes_an_opaque_profile() {
         let (store, _) = store();
+        let destination = ProviderKind::OpenAi.fixed_official_origin().unwrap();
         let saved = store
-            .save(ProviderKind::OpenAi, &SecretString::new("sk-real-secret"))
+            .save(
+                ProviderKind::OpenAi,
+                &destination,
+                &SecretString::new("sk-real-secret"),
+            )
             .unwrap();
 
         assert_ne!(saved.credential_ref.as_str(), "sk-real-secret");
+        assert_eq!(saved.origin.as_ref(), Some(&destination));
+        assert_eq!(saved.binding_state, CredentialBindingState::Bound);
         assert_eq!(store.list_profiles().unwrap(), vec![saved.clone()]);
         assert_eq!(
             store
-                .resolve(ProviderKind::OpenAi, &saved.credential_ref)
+                .resolve(ProviderKind::OpenAi, &destination, &saved.credential_ref)
                 .unwrap()
                 .expose_secret(),
             "sk-real-secret"
@@ -319,7 +456,7 @@ mod tests {
             .unwrap();
         assert!(store.list_profiles().unwrap().is_empty());
         assert_eq!(
-            store.resolve(ProviderKind::OpenAi, &saved.credential_ref),
+            store.resolve(ProviderKind::OpenAi, &destination, &saved.credential_ref),
             Err(CredentialStoreError::NotFound)
         );
     }
@@ -327,33 +464,105 @@ mod tests {
     #[test]
     fn provider_binding_prevents_cross_provider_secret_resolution() {
         let (store, _) = store();
+        let openai_origin = ProviderKind::OpenAi.fixed_official_origin().unwrap();
         let saved = store
-            .save(ProviderKind::OpenAi, &SecretString::new("sk-real-secret"))
+            .save(
+                ProviderKind::OpenAi,
+                &openai_origin,
+                &SecretString::new("sk-real-secret"),
+            )
             .unwrap();
 
         assert_eq!(
-            store.resolve(ProviderKind::Local, &saved.credential_ref),
+            store.resolve(
+                ProviderKind::Local,
+                &origin("https://gateway.example/v1"),
+                &saved.credential_ref
+            ),
             Err(CredentialStoreError::NotFound)
         );
     }
 
     #[test]
-    fn replacing_a_provider_profile_removes_the_old_secret() {
+    fn compatible_credentials_are_bound_to_the_normalized_origin_not_the_path() {
         let (store, values) = store();
-        let first = store
-            .save(ProviderKind::Anthropic, &SecretString::new("first-secret"))
-            .unwrap();
-        let second = store
-            .save(ProviderKind::Anthropic, &SecretString::new("second-secret"))
+        let destination = origin("https://Gateway.Example:443/v1");
+        let saved = store
+            .save(
+                ProviderKind::Local,
+                &destination,
+                &SecretString::new("gateway-secret"),
+            )
             .unwrap();
 
         assert_eq!(
-            store.resolve(ProviderKind::Anthropic, &first.credential_ref),
+            store
+                .resolve(
+                    ProviderKind::Local,
+                    &origin("https://gateway.example/another/api"),
+                    &saved.credential_ref,
+                )
+                .unwrap()
+                .expose_secret(),
+            "gateway-secret"
+        );
+        assert_eq!(
+            store.resolve(
+                ProviderKind::Local,
+                &origin("https://other.example/v1"),
+                &saved.credential_ref,
+            ),
+            Err(CredentialStoreError::DestinationMismatch)
+        );
+        let values = values.lock().unwrap();
+        assert!(values.contains_key(&profile_account(&saved.credential_ref)));
+        assert!(values.contains_key(&alias_account(ProviderKind::Local)));
+    }
+
+    #[test]
+    fn first_party_profiles_reject_non_official_origins() {
+        let (store, _) = store();
+        assert_eq!(
+            store.save(
+                ProviderKind::OpenAi,
+                &origin("https://gateway.example/v1"),
+                &SecretString::new("sk-real-secret"),
+            ),
+            Err(CredentialStoreError::DestinationMismatch)
+        );
+        assert!(store.list_profiles().unwrap().is_empty());
+    }
+
+    #[test]
+    fn replacing_a_provider_profile_removes_the_old_secret() {
+        let (store, values) = store();
+        let destination = ProviderKind::Anthropic.fixed_official_origin().unwrap();
+        let first = store
+            .save(
+                ProviderKind::Anthropic,
+                &destination,
+                &SecretString::new("first-secret"),
+            )
+            .unwrap();
+        let second = store
+            .save(
+                ProviderKind::Anthropic,
+                &destination,
+                &SecretString::new("second-secret"),
+            )
+            .unwrap();
+
+        assert_eq!(
+            store.resolve(ProviderKind::Anthropic, &destination, &first.credential_ref),
             Err(CredentialStoreError::ProviderMismatch)
         );
         assert_eq!(
             store
-                .resolve(ProviderKind::Anthropic, &second.credential_ref)
+                .resolve(
+                    ProviderKind::Anthropic,
+                    &destination,
+                    &second.credential_ref,
+                )
                 .unwrap()
                 .expose_secret(),
             "second-secret"
@@ -361,5 +570,147 @@ mod tests {
         let values = values.lock().unwrap();
         assert!(!values.contains_key(&profile_account(&first.credential_ref)));
         assert_eq!(values.len(), 2);
+    }
+
+    #[test]
+    fn legacy_cloud_aliases_are_bound_only_to_the_official_origin() {
+        let (store, values) = store();
+        let credential_ref =
+            CredentialProfileRef::new("cred_0123456789abcdef0123456789abcdef").unwrap();
+        {
+            let mut values = values.lock().unwrap();
+            values.insert(
+                alias_account(ProviderKind::OpenAi),
+                SecretString::new(credential_ref.as_str()),
+            );
+            values.insert(
+                profile_account(&credential_ref),
+                SecretString::new("legacy-openai-secret"),
+            );
+        }
+
+        let profiles = store.list_profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].binding_state, CredentialBindingState::Bound);
+        assert_eq!(
+            profiles[0].origin,
+            ProviderKind::OpenAi.fixed_official_origin()
+        );
+        assert_eq!(
+            store
+                .resolve(
+                    ProviderKind::OpenAi,
+                    &ProviderKind::OpenAi.fixed_official_origin().unwrap(),
+                    &credential_ref,
+                )
+                .unwrap()
+                .expose_secret(),
+            "legacy-openai-secret"
+        );
+        assert_eq!(
+            store.resolve(
+                ProviderKind::OpenAi,
+                &origin("https://gateway.example/v1"),
+                &credential_ref,
+            ),
+            Err(CredentialStoreError::DestinationMismatch)
+        );
+    }
+
+    #[test]
+    fn legacy_compatible_aliases_require_rebinding_but_remain_deletable() {
+        let (store, values) = store();
+        let credential_ref =
+            CredentialProfileRef::new("cred_fedcba9876543210fedcba9876543210").unwrap();
+        {
+            let mut values = values.lock().unwrap();
+            values.insert(
+                alias_account(ProviderKind::Local),
+                SecretString::new(credential_ref.as_str()),
+            );
+            values.insert(
+                profile_account(&credential_ref),
+                SecretString::new("legacy-local-secret"),
+            );
+        }
+
+        let profiles = store.list_profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].origin, None);
+        assert_eq!(
+            profiles[0].binding_state,
+            CredentialBindingState::RebindRequired
+        );
+        assert_eq!(
+            store.resolve(
+                ProviderKind::Local,
+                &origin("http://127.0.0.1:11434/v1"),
+                &credential_ref,
+            ),
+            Err(CredentialStoreError::RebindRequired)
+        );
+        {
+            let values = values.lock().unwrap();
+            assert!(values.contains_key(&profile_account(&credential_ref)));
+            assert!(values.contains_key(&alias_account(ProviderKind::Local)));
+        }
+
+        store.delete(ProviderKind::Local, &credential_ref).unwrap();
+        assert!(values.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn malformed_or_noncanonical_alias_envelopes_fail_closed() {
+        let (store, values) = store();
+        let credential_ref =
+            CredentialProfileRef::new("cred_0123456789abcdef0123456789abcdef").unwrap();
+        {
+            let mut values = values.lock().unwrap();
+            values.insert(
+                alias_account(ProviderKind::Local),
+                SecretString::new(format!(
+                    r#"{{"v":2,"credentialRef":"{}","origin":"https://gateway.example/v1"}}"#,
+                    credential_ref.as_str()
+                )),
+            );
+            values.insert(
+                profile_account(&credential_ref),
+                SecretString::new("must-remain"),
+            );
+        }
+
+        assert_eq!(
+            store.list_profiles(),
+            Err(CredentialStoreError::Unavailable)
+        );
+        assert_eq!(
+            store.resolve(
+                ProviderKind::Local,
+                &origin("https://gateway.example"),
+                &credential_ref,
+            ),
+            Err(CredentialStoreError::Unavailable)
+        );
+        let values = values.lock().unwrap();
+        assert_eq!(
+            values
+                .get(&profile_account(&credential_ref))
+                .unwrap()
+                .expose_secret(),
+            "must-remain"
+        );
+    }
+
+    #[test]
+    fn oversized_alias_envelopes_fail_closed() {
+        let (store, values) = store();
+        values.lock().unwrap().insert(
+            alias_account(ProviderKind::Local),
+            SecretString::new("x".repeat(MAX_ALIAS_ENVELOPE_BYTES + 1)),
+        );
+        assert_eq!(
+            store.list_profiles(),
+            Err(CredentialStoreError::Unavailable)
+        );
     }
 }

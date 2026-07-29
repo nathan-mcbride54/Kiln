@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   roadmap,
+  roadmapCurrentHorizon,
   roadmapLastReviewed,
   roadmapRevision,
 } from "./roadmap.generated";
@@ -18,6 +19,46 @@ import {
 type ProviderId = "openai" | "anthropic" | "local";
 type ViewId = "workbench" | "providers" | "roadmap";
 type TaskStatus = "running" | "review" | "done" | "paused";
+type ProviderStatus =
+  | "idle"
+  | "testing"
+  | "verifying"
+  | "connected"
+  | "limited"
+  | "error";
+type ProbeKey =
+  | "reachability"
+  | "authentication"
+  | "modelDiscovery"
+  | "streaming"
+  | "toolCompatibility";
+type ProbeStatus =
+  | "passed"
+  | "failed"
+  | "unsupported"
+  | "inconclusive"
+  | "not_run";
+
+type ProbeResult = {
+  key: ProbeKey;
+  label: string;
+  status: ProbeStatus;
+  message: string;
+  latencyMs?: number;
+  discoveredModels?: number;
+};
+
+type DiagnosticReport = {
+  provider: ProviderId;
+  origin: string;
+  model?: string;
+  probes: ProbeResult[];
+  capabilities: {
+    modelDiscovery: boolean;
+    streaming: boolean;
+    toolCalling: boolean;
+  };
+};
 
 type Task = {
   id: string;
@@ -41,8 +82,28 @@ type ProviderConfig = {
   model: string;
   endpoint: string;
   apiKey: string;
-  status: "idle" | "testing" | "connected" | "error";
+  status: ProviderStatus;
   statusText: string;
+  report?: DiagnosticReport;
+  credentialOrigin?: string;
+  originWarning?: string;
+};
+
+const PROBE_NAME = "kiln_capability_probe";
+const LOCAL_BODY_LIMIT = 256 * 1024;
+const PROBE_KEYS: ProbeKey[] = [
+  "reachability",
+  "authentication",
+  "modelDiscovery",
+  "streaming",
+  "toolCompatibility",
+];
+const PROBE_LABELS: Record<ProbeKey, string> = {
+  reachability: "Reachability",
+  authentication: "Authentication",
+  modelDiscovery: "Model discovery",
+  streaming: "Streaming",
+  toolCompatibility: "Tool compatibility",
 };
 
 const providerMeta: Record<
@@ -177,7 +238,7 @@ const defaultConfigs: Record<ProviderId, ProviderConfig> = {
   },
   anthropic: {
     model: "claude-sonnet-4-8",
-    endpoint: "https://api.anthropic.com",
+    endpoint: "https://api.anthropic.com/v1",
     apiKey: "",
     status: "idle",
     statusText: "Session key required",
@@ -190,6 +251,720 @@ const defaultConfigs: Record<ProviderId, ProviderConfig> = {
     statusText: "Ready to test",
   },
 };
+
+const currentRoadmapPhase =
+  roadmap.find((phase) => phase.id === roadmapCurrentHorizon) ?? roadmap[0];
+
+function diagnosticProbe(
+  key: ProbeKey,
+  status: ProbeStatus,
+  message: string,
+  extra: Pick<ProbeResult, "latencyMs" | "discoveredModels"> = {},
+): ProbeResult {
+  return {
+    key,
+    label: PROBE_LABELS[key],
+    status,
+    message,
+    ...extra,
+  };
+}
+
+function blankReport(
+  provider: ProviderId,
+  origin: string,
+  model?: string,
+): DiagnosticReport {
+  const probes = PROBE_KEYS.map((key) =>
+    diagnosticProbe(
+      key,
+      "not_run",
+      key === "streaming" || key === "toolCompatibility"
+        ? "Use Verify streaming & tools to run this model probe."
+        : "Run the basic connection test.",
+    ),
+  );
+  return {
+    provider,
+    origin,
+    model: model?.trim() || undefined,
+    probes,
+    capabilities: {
+      modelDiscovery: false,
+      streaming: false,
+      toolCalling: false,
+    },
+  };
+}
+
+function withProbe(
+  report: DiagnosticReport,
+  replacement: ProbeResult,
+): DiagnosticReport {
+  const probes = report.probes.map((item) =>
+    item.key === replacement.key ? replacement : item,
+  );
+  const status = (key: ProbeKey) =>
+    probes.find((item) => item.key === key)?.status;
+  return {
+    ...report,
+    probes,
+    capabilities: {
+      modelDiscovery: status("modelDiscovery") === "passed",
+      streaming: status("streaming") === "passed",
+      toolCalling: status("toolCompatibility") === "passed",
+    },
+  };
+}
+
+function reportProbe(
+  report: DiagnosticReport | undefined,
+  key: ProbeKey,
+): ProbeResult {
+  return (
+    report?.probes.find((item) => item.key === key) ??
+    diagnosticProbe(
+      key,
+      "not_run",
+      key === "streaming" || key === "toolCompatibility"
+        ? "Run the explicit model verification."
+        : "Run the basic connection test.",
+    )
+  );
+}
+
+function normalizedLocalEndpoint(
+  value: string,
+):
+  | { baseUrl: string; origin: string; credentialsAllowed: boolean }
+  | undefined {
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return undefined;
+    }
+    if (
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      return undefined;
+    }
+    const baseUrl = parsed.toString().replace(/\/+$/, "");
+    const hostname = parsed.hostname
+      .toLowerCase()
+      .replace(/^\[/, "")
+      .replace(/\]$/, "");
+    const ipv4 = hostname.split(".");
+    const loopback =
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      (ipv4.length === 4 &&
+        ipv4.every(
+          (part) =>
+            /^\d{1,3}$/.test(part) &&
+            Number(part) >= 0 &&
+            Number(part) <= 255,
+        ) &&
+        Number(ipv4[0]) === 127);
+    return {
+      baseUrl,
+      origin: parsed.origin,
+      credentialsAllowed: parsed.protocol === "https:" || loopback,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function localFetchOnce(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    cache: "no-store",
+    redirect: "manual",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+function isLocalTimeoutError(cause: unknown) {
+  return (
+    cause instanceof Error &&
+    (cause.name === "AbortError" || cause.name === "TimeoutError")
+  );
+}
+
+async function readLocalBody(response: Response): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > LOCAL_BODY_LIMIT) {
+      await reader.cancel();
+      throw new Error("body_limit");
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+function safeJson(text: string): unknown | undefined {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function localModelCount(payload: unknown): number | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const record = payload as { data?: unknown; models?: unknown };
+  const source = Array.isArray(record.data)
+    ? record.data
+    : Array.isArray(record.models)
+      ? record.models
+      : Array.isArray(payload)
+        ? payload
+        : undefined;
+  if (!source) return undefined;
+  if (source.length === 0) return 0;
+  return source.every((item) => {
+    if (!item || typeof item !== "object") return false;
+    const model = item as { id?: unknown; name?: unknown; model?: unknown };
+    return [model.id, model.name, model.model].some(
+      (value) => typeof value === "string" && value.trim().length > 0,
+    );
+  })
+    ? source.length
+    : undefined;
+}
+
+function parseLocalSse(text: string) {
+  const events: unknown[] = [];
+  let done = false;
+  for (const block of text.split(/\r?\n\r?\n/)) {
+    const data = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data) continue;
+    if (data === "[DONE]") {
+      done = true;
+      continue;
+    }
+    const parsed = safeJson(data);
+    if (parsed !== undefined) events.push(parsed);
+  }
+  return { events, done };
+}
+
+function recursiveField(
+  value: unknown,
+  key: string,
+  expected: string,
+  depth = 0,
+): boolean {
+  if (depth > 7 || !value || typeof value !== "object") return false;
+  if (Array.isArray(value)) {
+    return value.some((item) =>
+      recursiveField(item, key, expected, depth + 1),
+    );
+  }
+  const record = value as Record<string, unknown>;
+  if (record[key] === expected) return true;
+  return Object.values(record).some((item) =>
+    recursiveField(item, key, expected, depth + 1),
+  );
+}
+
+function hasLocalTextDelta(event: unknown) {
+  if (!event || typeof event !== "object") return false;
+  const choices = (event as { choices?: unknown }).choices;
+  if (!Array.isArray(choices)) return false;
+  return choices.some((choice) => {
+    if (!choice || typeof choice !== "object") return false;
+    const delta = (choice as { delta?: unknown }).delta;
+    return (
+      !!delta &&
+      typeof delta === "object" &&
+      typeof (delta as { content?: unknown }).content === "string"
+    );
+  });
+}
+
+function collectLocalToolEvidence(
+  value: unknown,
+  names: string[],
+  argumentsList: string[],
+  depth = 0,
+) {
+  if (depth > 7 || !value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((item) =>
+      collectLocalToolEvidence(item, names, argumentsList, depth + 1),
+    );
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.function && typeof record.function === "object") {
+    const fn = record.function as Record<string, unknown>;
+    if (typeof fn.name === "string") names.push(fn.name);
+    if (typeof fn.arguments === "string") argumentsList.push(fn.arguments);
+  }
+  Object.values(record).forEach((item) =>
+    collectLocalToolEvidence(item, names, argumentsList, depth + 1),
+  );
+}
+
+function validLocalProbeArguments(values: string[]) {
+  const valid = (value: string) => {
+    const parsed = safeJson(value);
+    return (
+      !!parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      Object.keys(parsed).length === 1 &&
+      (parsed as { value?: unknown }).value === "ok"
+    );
+  };
+  return values.some(valid) || valid(values.join(""));
+}
+
+async function runLocalInferenceProbe(
+  config: ProviderConfig,
+  baseUrl: string,
+  kind: "streaming" | "toolCompatibility",
+): Promise<ProbeResult> {
+  const key = kind;
+  const started = Date.now();
+  const headers = {
+    Accept: "text/event-stream",
+    "Content-Type": "application/json",
+    ...(config.apiKey
+      ? { Authorization: `Bearer ${config.apiKey}` }
+      : {}),
+  };
+  const toolParameters = {
+    type: "object",
+    properties: { value: { type: "string", enum: ["ok"] } },
+    required: ["value"],
+    additionalProperties: false,
+  };
+  const payload =
+    kind === "streaming"
+      ? {
+          model: config.model.trim(),
+          messages: [{ role: "user", content: "Reply only with OK." }],
+          max_tokens: 8,
+          stream: true,
+        }
+      : {
+          model: config.model.trim(),
+          messages: [
+            {
+              role: "user",
+              content:
+                "Call kiln_capability_probe once with value ok. Do not answer otherwise.",
+            },
+          ],
+          max_tokens: 64,
+          stream: true,
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: PROBE_NAME,
+                description:
+                  "Synthetic no-op used only to verify the provider protocol.",
+                parameters: toolParameters,
+              },
+            },
+          ],
+          tool_choice: {
+            type: "function",
+            function: { name: PROBE_NAME },
+          },
+        };
+
+  try {
+    const response = await localFetchOnce(
+      `${baseUrl}/chat/completions`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      },
+      45_000,
+    );
+    const latencyMs = Date.now() - started;
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      return diagnosticProbe(
+        key,
+        "failed",
+        "Kiln refused a redirect before forwarding the session key.",
+        { latencyMs },
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      return diagnosticProbe(
+        key,
+        response.status === 408 ||
+          response.status === 409 ||
+          response.status === 429 ||
+          response.status >= 500
+          ? "inconclusive"
+          : "failed",
+        "The local model did not complete this capability probe.",
+        { latencyMs },
+      );
+    }
+
+    const parsed = parseLocalSse(await readLocalBody(response));
+    if (kind === "streaming") {
+      const terminal =
+        parsed.done ||
+        parsed.events.some(
+          (event) =>
+            recursiveField(event, "finish_reason", "stop") ||
+            recursiveField(event, "finish_reason", "length"),
+        );
+      const compatible =
+        terminal && parsed.events.some((event) => hasLocalTextDelta(event));
+      return diagnosticProbe(
+        key,
+        compatible ? "passed" : "failed",
+        compatible
+          ? "The selected model completed a compatible event stream."
+          : "The selected model did not complete Kiln's streaming contract.",
+        { latencyMs },
+      );
+    }
+
+    const names: string[] = [];
+    const argumentsList: string[] = [];
+    parsed.events.forEach((event) =>
+      collectLocalToolEvidence(event, names, argumentsList),
+    );
+    const terminal =
+      parsed.done ||
+      parsed.events.some((event) =>
+        recursiveField(event, "finish_reason", "tool_calls"),
+      );
+    const compatible =
+      terminal &&
+      names.includes(PROBE_NAME) &&
+      validLocalProbeArguments(argumentsList);
+    return diagnosticProbe(
+      key,
+      compatible ? "passed" : "failed",
+      compatible
+        ? "The model emitted a valid synthetic tool request. Nothing was executed."
+        : "The model did not emit Kiln's required tool-call shape.",
+      { latencyMs },
+    );
+  } catch (cause) {
+    return diagnosticProbe(
+      key,
+      "inconclusive",
+      cause instanceof Error && cause.message === "body_limit"
+        ? "The model response exceeded the diagnostic safety limit."
+        : isLocalTimeoutError(cause)
+          ? "The local model probe timed out."
+          : "The browser could not inspect this model response. The server may be offline or may not allow this page through CORS.",
+      { latencyMs: Date.now() - started },
+    );
+  }
+}
+
+async function runLocalDiagnostics(
+  config: ProviderConfig,
+  verify: boolean,
+): Promise<DiagnosticReport> {
+  const destination = normalizedLocalEndpoint(config.endpoint);
+  let report = blankReport(
+    "local",
+    destination?.origin ?? "Invalid local endpoint",
+    config.model,
+  );
+  if (!destination) {
+    return withProbe(
+      report,
+      diagnosticProbe(
+        "reachability",
+        "failed",
+        "Enter an absolute HTTP or HTTPS endpoint without credentials, a query, or a fragment.",
+      ),
+    );
+  }
+  if (config.apiKey && !destination.credentialsAllowed) {
+    report = withProbe(
+      report,
+      diagnosticProbe(
+        "authentication",
+        "failed",
+        "Kiln only sends a key over HTTPS or to localhost, 127/8, or ::1. The key was not sent.",
+      ),
+    );
+    return report;
+  }
+  if (
+    config.apiKey &&
+    config.credentialOrigin !== destination.origin
+  ) {
+    report = withProbe(
+      report,
+      diagnosticProbe(
+        "authentication",
+        "failed",
+        "Re-enter the optional key to bind it to this origin. It was not sent.",
+      ),
+    );
+    return report;
+  }
+
+  const started = Date.now();
+  try {
+    const response = await localFetchOnce(
+      `${destination.baseUrl}/models`,
+      {
+        headers: config.apiKey
+          ? { Authorization: `Bearer ${config.apiKey}` }
+          : undefined,
+      },
+      15_000,
+    );
+    const latencyMs = Date.now() - started;
+    report = withProbe(
+      report,
+      diagnosticProbe(
+        "reachability",
+        "passed",
+        "The configured local origin responded.",
+        { latencyMs },
+      ),
+    );
+
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel();
+      report = withProbe(
+        report,
+        diagnosticProbe(
+          "authentication",
+          "inconclusive",
+          "Kiln refused a redirect before forwarding the session key.",
+        ),
+      );
+      return withProbe(
+        report,
+        diagnosticProbe(
+          "modelDiscovery",
+          "failed",
+          "Model discovery redirected away from the configured endpoint.",
+        ),
+      );
+    }
+    if (response.status === 401 || response.status === 403) {
+      await response.body?.cancel();
+      report = withProbe(
+        report,
+        diagnosticProbe(
+          "authentication",
+          "failed",
+          config.apiKey
+            ? "The optional session key was not accepted."
+            : "This server requires a key. Enter it for this exact origin.",
+        ),
+      );
+      return withProbe(
+        report,
+        diagnosticProbe(
+          "modelDiscovery",
+          "not_run",
+          "Model discovery needs accepted credentials.",
+        ),
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      report = withProbe(
+        report,
+        diagnosticProbe(
+          "authentication",
+          "inconclusive",
+          "The server response did not verify whether a key is required.",
+        ),
+      );
+      return withProbe(
+        report,
+        diagnosticProbe(
+          "modelDiscovery",
+          response.status === 404 || response.status === 405
+            ? "unsupported"
+            : "inconclusive",
+          response.status === 404 || response.status === 405
+            ? "This server did not expose a compatible model list."
+            : "Model discovery could not be verified right now.",
+        ),
+      );
+    }
+
+    report = withProbe(
+      report,
+      diagnosticProbe(
+        "authentication",
+        "passed",
+        config.apiKey
+          ? "The session key was accepted."
+          : "This endpoint accepted the request without a key.",
+      ),
+    );
+    const discoveredModels = localModelCount(
+      safeJson(await readLocalBody(response)),
+    );
+    report = withProbe(
+      report,
+      discoveredModels === undefined
+        ? diagnosticProbe(
+            "modelDiscovery",
+            "failed",
+            "The server returned a model list Kiln could not safely interpret.",
+          )
+        : diagnosticProbe(
+            "modelDiscovery",
+            "passed",
+            discoveredModels === 1
+              ? "Discovered 1 available model."
+              : `Discovered ${discoveredModels} available models.`,
+            { discoveredModels },
+          ),
+    );
+  } catch (cause) {
+    return withProbe(
+      report,
+      diagnosticProbe(
+        "reachability",
+        "inconclusive",
+        cause instanceof Error && cause.message === "body_limit"
+          ? "The local response exceeded the diagnostic safety limit."
+          : isLocalTimeoutError(cause)
+            ? "The local endpoint did not respond before the timeout."
+            : "The browser could not inspect this origin. The server may be offline or may not allow this page through CORS.",
+        { latencyMs: Date.now() - started },
+      ),
+    );
+  }
+
+  if (!verify) return report;
+  const reachability = reportProbe(report, "reachability");
+  const authentication = reportProbe(report, "authentication");
+  if (
+    reachability.status !== "passed" ||
+    authentication.status === "failed"
+  ) {
+    return report;
+  }
+  if (!config.model.trim()) {
+    report = withProbe(
+      report,
+      diagnosticProbe(
+        "streaming",
+        "not_run",
+        "Choose a model before verification.",
+      ),
+    );
+    return withProbe(
+      report,
+      diagnosticProbe(
+        "toolCompatibility",
+        "not_run",
+        "Choose a model before verification.",
+      ),
+    );
+  }
+
+  report = withProbe(
+    report,
+    await runLocalInferenceProbe(
+      config,
+      destination.baseUrl,
+      "streaming",
+    ),
+  );
+  report = withProbe(
+    report,
+    await runLocalInferenceProbe(
+      config,
+      destination.baseUrl,
+      "toolCompatibility",
+    ),
+  );
+  if (
+    authentication.status === "inconclusive" &&
+    (reportProbe(report, "streaming").status === "passed" ||
+      reportProbe(report, "toolCompatibility").status === "passed")
+  ) {
+    report = withProbe(
+      report,
+      diagnosticProbe(
+        "authentication",
+        "passed",
+        "A model request was accepted at this origin.",
+      ),
+    );
+  }
+  return report;
+}
+
+function providerStatusForReport(report: DiagnosticReport): ProviderStatus {
+  const reachability = reportProbe(report, "reachability").status;
+  const authentication = reportProbe(report, "authentication").status;
+  if (reachability === "failed" || authentication === "failed") return "error";
+  if (reachability === "passed" && authentication === "passed") {
+    return "connected";
+  }
+  return "limited";
+}
+
+function providerStatusText(report: DiagnosticReport) {
+  if (
+    report.capabilities.streaming &&
+    report.capabilities.toolCalling
+  ) {
+    return "Streaming and tools verified";
+  }
+  const status = providerStatusForReport(report);
+  if (status === "connected") return "Basic checks passed";
+  if (status === "error") return "Connection needs attention";
+  return "Browser verification is incomplete";
+}
+
+function probeDisplay(status: ProbeStatus) {
+  switch (status) {
+    case "passed":
+      return "Verified";
+    case "failed":
+      return "Failed";
+    case "unsupported":
+      return "Not exposed";
+    case "inconclusive":
+      return "Unclear";
+    default:
+      return "Not tested";
+  }
+}
 
 function StatusDot({ status }: { status: TaskStatus }) {
   return <span className={`status-dot status-${status}`} aria-hidden="true" />;
@@ -238,54 +1013,154 @@ export function KilnWorkbench() {
     }));
   }
 
-  async function testProvider(id: ProviderId) {
+  function changeModel(id: ProviderId, model: string) {
+    updateConfig(id, {
+      model,
+      report: undefined,
+      status: "idle",
+      statusText: "Model changed — run checks",
+    });
+  }
+
+  function changeEndpoint(endpoint: string) {
+    setConfigs((current) => {
+      const config = current.local;
+      const destination = normalizedLocalEndpoint(endpoint);
+      const changedCredentialDestination =
+        !!config.apiKey &&
+        !!destination &&
+        config.credentialOrigin !== destination.origin;
+      const originWarning = changedCredentialDestination
+        ? `Destination changed from ${
+            config.credentialOrigin ?? "an invalid destination"
+          } to ${destination.origin}. The previous key was cleared. Re-enter it to create a new session binding.`
+        : config.originWarning && destination
+          ? `The previous key was cleared after a destination change. Re-enter it to bind a new session key to ${destination.origin}.`
+          : config.originWarning;
+
+      return {
+        ...current,
+        local: {
+          ...config,
+          endpoint,
+          apiKey: changedCredentialDestination ? "" : config.apiKey,
+          credentialOrigin: changedCredentialDestination
+            ? undefined
+            : config.credentialOrigin,
+          originWarning,
+          report: undefined,
+          status: "idle",
+          statusText: changedCredentialDestination
+            ? "Destination changed — re-enter key"
+            : "Ready to test",
+        },
+      };
+    });
+  }
+
+  function changeApiKey(id: ProviderId, apiKey: string) {
+    if (id !== "local") {
+      updateConfig(id, {
+        apiKey,
+        report: undefined,
+        status: "idle",
+        statusText: apiKey.trim() ? "Ready to test" : "Session key required",
+      });
+      return;
+    }
+
+    setConfigs((current) => {
+      const config = current.local;
+      const destination = normalizedLocalEndpoint(config.endpoint);
+      const hasKey = apiKey.length > 0;
+      const credentialsAllowed = destination?.credentialsAllowed ?? false;
+      return {
+        ...current,
+        local: {
+          ...config,
+          apiKey,
+          credentialOrigin:
+            hasKey && credentialsAllowed ? destination?.origin : undefined,
+          originWarning:
+            hasKey && !destination
+              ? "Fix the local endpoint, then re-enter the key so Kiln can bind it to the exact destination."
+              : hasKey && !credentialsAllowed
+                ? "Kiln only sends a key over HTTPS or to localhost, 127/8, or ::1. This key remains in memory and will not be sent."
+              : undefined,
+          report: undefined,
+          status: "idle",
+          statusText:
+            hasKey && (!destination || !credentialsAllowed)
+              ? "Key blocked for this endpoint"
+              : "Ready to test",
+        },
+      };
+    });
+  }
+
+  async function runProviderDiagnostics(id: ProviderId, verify: boolean) {
     const config = configs[id];
-    updateConfig(id, { status: "testing", statusText: "Testing connection…" });
+    updateConfig(id, {
+      status: verify ? "verifying" : "testing",
+      statusText: verify
+        ? "Verifying model capabilities…"
+        : "Running basic checks…",
+    });
 
     try {
+      let report: DiagnosticReport;
       if (id === "local") {
-        const endpoint = config.endpoint.replace(/\/$/, "");
-        const response = await fetch(`${endpoint}/models`, {
-          headers: config.apiKey
-            ? { Authorization: `Bearer ${config.apiKey}` }
-            : undefined,
-        });
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}`);
-        }
+        report = await runLocalDiagnostics(config, verify);
       } else {
-        if (!config.apiKey.trim()) {
-          throw new Error("Add a session API key first");
-        }
         const response = await fetch("/api/provider", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            action: "test",
+            action: verify ? "verify" : "test",
             provider: id,
+            model: config.model,
             apiKey: config.apiKey,
           }),
         });
         const result = (await response.json()) as {
           ok?: boolean;
           error?: string;
+          report?: DiagnosticReport;
         };
-        if (!response.ok || !result.ok) {
-          throw new Error(result.error || "Connection failed");
+        if (!response.ok || !result.ok || !result.report) {
+          throw new Error(result.error || "The provider checks could not run.");
         }
+        report = result.report;
       }
+
+      const status = providerStatusForReport(report);
       updateConfig(id, {
-        status: "connected",
-        statusText: "Connected",
+        report,
+        status,
+        statusText: providerStatusText(report),
       });
-      setToast(`${providerMeta[id].name} is ready`);
+      setToast(
+        `${providerMeta[id].name} ${
+          verify ? "capability verification" : "connection checks"
+        } finished`,
+      );
     } catch (error) {
       updateConfig(id, {
         status: "error",
         statusText:
-          error instanceof Error ? error.message : "Connection failed",
+          error instanceof Error
+            ? error.message
+            : "The provider checks could not run.",
       });
     }
+  }
+
+  async function testProvider(id: ProviderId) {
+    await runProviderDiagnostics(id, false);
+  }
+
+  async function verifyProvider(id: ProviderId) {
+    await runProviderDiagnostics(id, true);
   }
 
   async function submitPrompt(event?: FormEvent) {
@@ -314,8 +1189,28 @@ export function KilnWorkbench() {
       let assistantText = "";
 
       if (provider === "local") {
-        const endpoint = config.endpoint.replace(/\/$/, "");
-        const response = await fetch(`${endpoint}/chat/completions`, {
+        const destination = normalizedLocalEndpoint(config.endpoint);
+        if (!destination) {
+          throw new Error(
+            "Enter a valid local HTTP or HTTPS endpoint before sending.",
+          );
+        }
+        if (config.apiKey && !destination.credentialsAllowed) {
+          throw new Error(
+            "Kiln only sends a key over HTTPS or to localhost, 127/8, or ::1.",
+          );
+        }
+        if (
+          config.apiKey &&
+          config.credentialOrigin !== destination.origin
+        ) {
+          throw new Error(
+            "The local destination changed. Re-enter the optional key before sending it.",
+          );
+        }
+        const response = await localFetchOnce(
+          `${destination.baseUrl}/chat/completions`,
+          {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -331,15 +1226,26 @@ export function KilnWorkbench() {
               content: message.body,
             })),
           }),
-        });
+          },
+          60_000,
+        );
+        if (response.status >= 300 && response.status < 400) {
+          await response.body?.cancel();
+          throw new Error(
+            "Kiln refused a redirect before forwarding the session key.",
+          );
+        }
         if (!response.ok) {
+          await response.body?.cancel();
           throw new Error(`Local server returned ${response.status}`);
         }
-        const result = (await response.json()) as {
+        const result = safeJson(await readLocalBody(response)) as
+          | {
           choices?: Array<{ message?: { content?: string } }>;
-        };
+            }
+          | undefined;
         assistantText =
-          result.choices?.[0]?.message?.content ??
+          result?.choices?.[0]?.message?.content ??
           "The local server returned no text.";
       } else if (config.apiKey && config.status === "connected") {
         const response = await fetch("/api/provider", {
@@ -771,6 +1677,8 @@ export function KilnWorkbench() {
             {(Object.keys(providerMeta) as ProviderId[]).map((id) => {
               const config = configs[id];
               const meta = providerMeta[id];
+              const busy =
+                config.status === "testing" || config.status === "verifying";
               return (
                 <article
                   className={`provider-card provider-card-${config.status}`}
@@ -792,8 +1700,12 @@ export function KilnWorkbench() {
                     <span className={`provider-status provider-status-${config.status}`}>
                       {config.status === "testing"
                         ? "Testing"
+                        : config.status === "verifying"
+                          ? "Verifying"
                         : config.status === "connected"
                           ? "Connected"
+                          : config.status === "limited"
+                            ? "Incomplete"
                           : config.status === "error"
                             ? "Needs attention"
                             : "Not connected"}
@@ -804,20 +1716,19 @@ export function KilnWorkbench() {
                     <span>Model</span>
                     <input
                       value={config.model}
-                      onChange={(event) =>
-                        updateConfig(id, { model: event.target.value })
-                      }
+                      onChange={(event) => changeModel(id, event.target.value)}
                       spellCheck={false}
                     />
                   </label>
                   <label>
-                    <span>Endpoint</span>
+                    <span>
+                      Endpoint{" "}
+                      <small>{id === "local" ? "custom" : "pinned by Kiln"}</small>
+                    </span>
                     <input
                       value={config.endpoint}
                       disabled={id !== "local"}
-                      onChange={(event) =>
-                        updateConfig(id, { endpoint: event.target.value })
-                      }
+                      onChange={(event) => changeEndpoint(event.target.value)}
                       spellCheck={false}
                     />
                   </label>
@@ -829,33 +1740,66 @@ export function KilnWorkbench() {
                       type="password"
                       value={config.apiKey}
                       placeholder={id === "local" ? "Optional bearer token" : "Session only"}
-                      onChange={(event) =>
-                        updateConfig(id, {
-                          apiKey: event.target.value,
-                          status: "idle",
-                          statusText:
-                            id === "local"
-                              ? "Ready to test"
-                              : "Session key ready",
-                        })
-                      }
+                      onChange={(event) => changeApiKey(id, event.target.value)}
                       autoComplete="off"
                     />
                   </label>
+                  {config.originWarning && (
+                    <div className="origin-warning" role="alert">
+                      <strong>Credential boundary</strong>
+                      <span>{config.originWarning}</span>
+                    </div>
+                  )}
+                  <div
+                    className="probe-list"
+                    aria-label={`${meta.name} diagnostic results`}
+                  >
+                    {PROBE_KEYS.map((key) => {
+                      const probe = reportProbe(config.report, key);
+                      return (
+                        <div
+                          className={`probe-row probe-result-${probe.status}`}
+                          title={probe.message}
+                          key={key}
+                        >
+                          <span className="probe-indicator" aria-hidden="true" />
+                          <span className="probe-copy">
+                            <span>{probe.label}</span>
+                            {config.report && <small>{probe.message}</small>}
+                          </span>
+                          <strong>{probeDisplay(probe.status)}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
                   <div className="provider-card-footer">
-                    <div>
+                    <div className="connection-summary">
                       <span
                         className={`connection-light connection-light-${config.status}`}
                       />
                       <span>{config.statusText}</span>
                     </div>
-                    <button
-                      onClick={() => void testProvider(id)}
-                      disabled={config.status === "testing"}
-                    >
-                      {config.status === "connected" ? "Retest" : "Test connection"}
-                    </button>
+                    <div className="provider-actions">
+                      <button
+                        onClick={() => void testProvider(id)}
+                        disabled={busy}
+                      >
+                        {config.report ? "Run basic test again" : "Test connection"}
+                      </button>
+                      <button
+                        className="verify-button"
+                        onClick={() => void verifyProvider(id)}
+                        disabled={busy}
+                      >
+                        Verify streaming &amp; tools
+                      </button>
+                    </div>
                   </div>
+                  <p className="verification-note">
+                    The basic test does not generate text. Verification sends two
+                    tiny synthetic prompts, which may use provider tokens or warm a
+                    local model. Kiln never executes the synthetic tool.
+                  </p>
                 </article>
               );
             })}
@@ -867,7 +1811,7 @@ export function KilnWorkbench() {
                 <span className="content-kicker">Capability contract</span>
                 <h2>The interface follows support, not brand names.</h2>
               </div>
-              <span className="matrix-note">Advertised at connection time</span>
+              <span className="matrix-note">Live results from five independent probes</span>
             </div>
             <div className="matrix-table" role="table" aria-label="Provider capabilities">
               <div className="matrix-row matrix-head" role="row">
@@ -876,20 +1820,23 @@ export function KilnWorkbench() {
                 <span>Anthropic</span>
                 <span>Local</span>
               </div>
-              {[
-                ["Streaming", "yes", "yes", "detect"],
-                ["Tool calls", "yes", "yes", "detect"],
-                ["Structured output", "yes", "partial", "detect"],
-                ["Usage reporting", "yes", "yes", "detect"],
-                ["Data destination", "remote", "remote", "device"],
-              ].map((row) => (
-                <div className="matrix-row" role="row" key={row[0]}>
-                  <strong>{row[0]}</strong>
-                  {row.slice(1).map((value, index) => (
-                    <span className={`matrix-value matrix-${value}`} key={`${value}-${index}`}>
-                      {value === "yes" ? "● Supported" : value}
-                    </span>
-                  ))}
+              {PROBE_KEYS.map((key) => (
+                <div className="matrix-row" role="row" key={key}>
+                  <strong>{PROBE_LABELS[key]}</strong>
+                  {(["openai", "anthropic", "local"] as ProviderId[]).map(
+                    (providerId) => {
+                      const probe = reportProbe(configs[providerId].report, key);
+                      return (
+                        <span
+                          className={`matrix-value probe-result-${probe.status}`}
+                          title={probe.message}
+                          key={providerId}
+                        >
+                          {probeDisplay(probe.status)}
+                        </span>
+                      );
+                    },
+                  )}
                 </div>
               ))}
             </div>
@@ -922,8 +1869,8 @@ export function KilnWorkbench() {
           <div className="roadmap-overview">
             <div className="roadmap-stat">
               <span>Current horizon</span>
-              <strong>H0</strong>
-              <small>Product foundation</small>
+              <strong>{currentRoadmapPhase.id}</strong>
+              <small>{currentRoadmapPhase.title}</small>
             </div>
             <div className="roadmap-stat">
               <span>Core promise</span>

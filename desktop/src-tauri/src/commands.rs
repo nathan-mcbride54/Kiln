@@ -38,7 +38,10 @@ pub async fn save_provider_credential(
 ) -> Result<ProviderCredentialProfile, CommandError> {
     let store = state.credentials.clone();
     let provider = request.provider;
-    tauri::async_runtime::spawn_blocking(move || store.save(provider, &request.secret))
+    let origin = state
+        .providers
+        .credential_origin(provider, request.base_url.as_deref())?;
+    tauri::async_runtime::spawn_blocking(move || store.save(provider, &origin, &request.secret))
         .await
         .map_err(|_| credential_task_error(Some(provider)))?
         .map_err(|error| credential_error(error, Some(provider)))
@@ -62,7 +65,9 @@ pub async fn test_connection(
     state: State<'_, AppState>,
     request: ConnectionTestRequest,
 ) -> Result<ConnectionTestResponse, CommandError> {
-    let request = resolve_connection_credentials(state.credentials.clone(), request).await?;
+    let request =
+        resolve_connection_credentials(state.credentials.clone(), state.providers.clone(), request)
+            .await?;
     state.providers.test_connection(&request).await
 }
 
@@ -71,7 +76,9 @@ pub async fn send_chat_request(
     state: State<'_, AppState>,
     request: ChatRequest,
 ) -> Result<ChatResponse, CommandError> {
-    let request = resolve_chat_credentials(state.credentials.clone(), request).await?;
+    let request =
+        resolve_chat_credentials(state.credentials.clone(), state.providers.clone(), request)
+            .await?;
     state.providers.send_chat(&request).await
 }
 
@@ -97,7 +104,9 @@ pub async fn start_chat_stream(
     if turn_id.trim().is_empty() {
         return Err(invalid_turn("The turn identifier cannot be blank."));
     }
-    let request = resolve_chat_credentials(state.credentials.clone(), request).await?;
+    let request =
+        resolve_chat_credentials(state.credentials.clone(), state.providers.clone(), request)
+            .await?;
     let cancellation = state
         .active_turns
         .start(turn_id.clone())
@@ -129,17 +138,20 @@ pub async fn start_chat_stream(
 
 async fn resolve_connection_credentials(
     store: OsCredentialStore,
+    providers: kiln_providers::ProviderService,
     mut request: ConnectionTestRequest,
 ) -> Result<ConnectionTestRequest, CommandError> {
     let Some(credential_ref) = request.credential_ref.clone() else {
         return Ok(request);
     };
     let provider = request.provider;
-    let secret =
-        tauri::async_runtime::spawn_blocking(move || store.resolve(provider, &credential_ref))
-            .await
-            .map_err(|_| credential_task_error(Some(provider)))?
-            .map_err(|error| credential_error(error, Some(provider)))?;
+    let origin = providers.credential_origin(provider, request.base_url.as_deref())?;
+    let secret = tauri::async_runtime::spawn_blocking(move || {
+        store.resolve(provider, &origin, &credential_ref)
+    })
+    .await
+    .map_err(|_| credential_task_error(Some(provider)))?
+    .map_err(|error| credential_error(error, Some(provider)))?;
     request.credentials = ProviderCredentials {
         api_key: Some(secret),
         ..ProviderCredentials::default()
@@ -149,17 +161,20 @@ async fn resolve_connection_credentials(
 
 async fn resolve_chat_credentials(
     store: OsCredentialStore,
+    providers: kiln_providers::ProviderService,
     mut request: ChatRequest,
 ) -> Result<ChatRequest, CommandError> {
     let Some(credential_ref) = request.credential_ref.clone() else {
         return Ok(request);
     };
     let provider = request.provider;
-    let secret =
-        tauri::async_runtime::spawn_blocking(move || store.resolve(provider, &credential_ref))
-            .await
-            .map_err(|_| credential_task_error(Some(provider)))?
-            .map_err(|error| credential_error(error, Some(provider)))?;
+    let origin = providers.credential_origin(provider, request.base_url.as_deref())?;
+    let secret = tauri::async_runtime::spawn_blocking(move || {
+        store.resolve(provider, &origin, &credential_ref)
+    })
+    .await
+    .map_err(|_| credential_task_error(Some(provider)))?
+    .map_err(|error| credential_error(error, Some(provider)))?;
     request.credentials = ProviderCredentials {
         api_key: Some(secret),
         ..ProviderCredentials::default()

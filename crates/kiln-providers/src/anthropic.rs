@@ -23,10 +23,11 @@ impl ProviderAdapter for AnthropicAdapter {
             protocol: ProviderProtocol::AnthropicMessages,
             default_base_url: "https://api.anthropic.com/v1",
             api_key_required: true,
-            custom_base_url: true,
-            custom_headers: true,
+            custom_base_url: false,
+            custom_headers: false,
             model_discovery: true,
             streaming: true,
+            tool_calling: true,
             system_messages: true,
             temperature: true,
         }

@@ -7,6 +7,7 @@ import type {
   ChatRequest,
   ChatResponse,
   CommandError,
+  ConnectionProbe,
   ConnectionTestResponse,
   ProjectDefaults,
   ProjectSnapshot,
@@ -69,6 +70,7 @@ const previewCapabilities: ProviderCapabilities[] = [
     customHeaders: false,
     modelDiscovery: true,
     streaming: true,
+    toolCalling: true,
     systemMessages: true,
     temperature: true,
   },
@@ -82,6 +84,7 @@ const previewCapabilities: ProviderCapabilities[] = [
     customHeaders: false,
     modelDiscovery: true,
     streaming: true,
+    toolCalling: true,
     systemMessages: true,
     temperature: true,
   },
@@ -95,6 +98,7 @@ const previewCapabilities: ProviderCapabilities[] = [
     customHeaders: true,
     modelDiscovery: true,
     streaming: true,
+    toolCalling: true,
     systemMessages: true,
     temperature: true,
   },
@@ -162,11 +166,13 @@ export function listProviderCredentials(): Promise<ProviderCredentialProfile[]> 
 export function saveProviderCredential(
   provider: ProviderId,
   secret: string,
+  baseUrl: string,
 ): Promise<ProviderCredentialProfile> {
   return callOrPreview(
     "save_provider_credential",
-    { request: { provider, secret } },
+    { request: { provider, secret, baseUrl } },
     () => {
+      const origin = canonicalProviderOrigin(baseUrl);
       const profile: ProviderCredentialProfile = {
         provider,
         credentialRef: `cred_${crypto.randomUUID().replaceAll("-", "").slice(0, 32)}`,
@@ -174,6 +180,8 @@ export function saveProviderCredential(
           navigator.platform.toLowerCase().includes("win")
             ? "windows_credential_manager"
             : "linux_secret_service",
+        origin,
+        bindingState: "bound",
       };
       previewCredentialProfiles.set(provider, profile);
       return profile;
@@ -191,9 +199,47 @@ export function deleteProviderCredential(
       credentialRef: profile.credentialRef,
     },
     () => {
-      previewCredentialProfiles.delete(profile.provider);
+      const candidate = previewCredentialProfiles.get(profile.provider);
+      if (candidate?.credentialRef === profile.credentialRef) {
+        previewCredentialProfiles.delete(profile.provider);
+      }
     },
   );
+}
+
+export function canonicalProviderOrigin(baseUrl: string): string | undefined {
+  try {
+    const url = new URL(baseUrl.trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return undefined;
+    }
+    if (url.username || url.password || url.search || url.hash) {
+      return undefined;
+    }
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
+export function usableProviderCredential(
+  provider: ProviderConfig,
+): string | undefined {
+  if (
+    !provider.credentialRef ||
+    provider.credentialBindingState !== "bound"
+  ) {
+    return undefined;
+  }
+
+  if (!provider.credentialOrigin) return provider.credentialRef;
+  const configuredOrigin = canonicalProviderOrigin(provider.baseUrl);
+  const credentialOrigin =
+    canonicalProviderOrigin(provider.credentialOrigin) ??
+    provider.credentialOrigin.trim();
+  return configuredOrigin === credentialOrigin
+    ? provider.credentialRef
+    : undefined;
 }
 
 export function testProviderConnection(
@@ -204,20 +250,113 @@ export function testProviderConnection(
     {
       request: {
         provider: provider.id,
-        credentialRef: provider.credentialRef,
+        credentialRef: usableProviderCredential(provider),
         baseUrl: provider.baseUrl || undefined,
+        model: provider.model.trim() || undefined,
       },
     },
-    () => ({
-      provider: provider.id,
-      connected: true,
-      latencyMs: provider.id === "local" ? 18 : provider.id === "openai" ? 84 : 112,
-      discoveredModels: provider.id === "local" ? 4 : undefined,
-      message: isDesktopRuntime()
-        ? "Connection ready"
-        : "Preview connection ready — launch the desktop app for a live test.",
-    }),
+    () => previewConnectionReport(provider),
   );
+}
+
+function previewConnectionReport(
+  provider: ProviderConfig,
+): ConnectionTestResponse {
+  const contract =
+    provider.capabilities ??
+    previewCapabilities.find(
+      (candidate) => candidate.provider === provider.id,
+    );
+  const hasAuthentication =
+    !contract?.apiKeyRequired || Boolean(usableProviderCredential(provider));
+  const model = provider.model.trim() || undefined;
+  const models = contract?.modelDiscovery && model ? [model] : [];
+  const probes: ConnectionProbe[] = [
+    {
+      kind: "reachability",
+      status: "passed",
+      latencyMs: 28,
+      message: "Preview endpoint responded.",
+    },
+    {
+      kind: "authentication",
+      status: hasAuthentication ? "passed" : "failed",
+      message: hasAuthentication
+        ? contract?.apiKeyRequired
+          ? "The stored credential was accepted in preview."
+          : "This profile does not require a credential."
+        : "Save a credential for this destination to authenticate.",
+    },
+    {
+      kind: "model_discovery",
+      status: contract?.modelDiscovery ? "passed" : "unsupported",
+      message: contract?.modelDiscovery
+        ? `Preview discovered ${models.length} configured model${models.length === 1 ? "" : "s"}.`
+        : "This adapter does not advertise model discovery.",
+    },
+    previewGenerationProbe(
+      "streaming",
+      Boolean(contract?.streaming),
+      hasAuthentication,
+      model,
+    ),
+    previewGenerationProbe(
+      "tool_compatibility",
+      Boolean(contract?.toolCalling),
+      hasAuthentication,
+      model,
+    ),
+  ];
+  const overall = !hasAuthentication
+    ? "unavailable"
+    : probes.every((probe) => probe.status === "passed")
+      ? "ready"
+      : "degraded";
+
+  return {
+    provider: provider.id,
+    origin:
+      canonicalProviderOrigin(provider.baseUrl) ?? provider.baseUrl.trim(),
+    model,
+    overall,
+    models,
+    probes,
+  };
+}
+
+function previewGenerationProbe(
+  kind: "streaming" | "tool_compatibility",
+  supported: boolean,
+  authenticated: boolean,
+  model: string | undefined,
+): ConnectionProbe {
+  const feature = kind === "streaming" ? "Streaming" : "Tool calling";
+  if (!authenticated) {
+    return {
+      kind,
+      status: "skipped",
+      message: `${feature} was skipped because authentication failed.`,
+    };
+  }
+  if (!model) {
+    return {
+      kind,
+      status: "skipped",
+      message: `${feature} needs a model selection.`,
+    };
+  }
+  return supported
+    ? {
+        kind,
+        status: "passed",
+        latencyMs: kind === "streaming" ? 36 : 42,
+        message: `${feature} passed with a small preview request.`,
+      }
+    : {
+        kind,
+        status: "unsupported",
+        message: `This adapter does not advertise ${feature.toLowerCase()}.`,
+      };
 }
 
 export async function loadApplicationEvents(

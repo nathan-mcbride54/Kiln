@@ -132,16 +132,32 @@ application's state model.
 ### Local compatible server
 
 - Base URL is user controlled and normalized once.
-- H1-007 binds stored credential references to that normalized origin and
-  requires an explicit rebind after a destination change.
+- Stored credential references bind to that normalized origin and require an
+  explicit rebind after a destination change.
 - `GET /v1/models` probes reachability and model discovery.
 - `POST /v1/chat/completions` handles the initial chat path.
 - Tokens are optional.
-- Future diagnostics probe streaming and tool calls separately so a partially
-  compatible server remains useful.
+- Streaming and structured tool calls are model-scoped probes, so a partially
+  compatible server remains useful and its unsupported behavior stays visible.
 
 The credential-destination policy is recorded in
 [ADR 0009](decisions/0009-origin-bound-provider-profiles.md).
+
+### Diagnostic contract
+
+Provider connection results contain five stable probe slots: reachability,
+authentication, model discovery, streaming, and tool compatibility. The first
+three share one bounded, non-generating model-list request. Supplying a model
+explicitly opts into two small synthetic inference requests for the final two
+slots. Their results are normalized independently rather than collapsed into a
+single connected/disconnected flag.
+
+The interface hydrates provider controls from advertised capabilities and
+renders the live probe report. It does not infer editable endpoints, required
+keys, streaming, or tool support from a provider name. Fixed cloud origins,
+origin-bound compatible credentials, disabled redirects, bounded responses,
+and probe limitations are specified in
+[Provider diagnostics](PROVIDER_DIAGNOSTICS.md).
 
 ## Application API
 
