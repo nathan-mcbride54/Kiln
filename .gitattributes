@@ -1,0 +1,5 @@
+# Generated artifacts are compared byte-for-byte in CI.
+ROADMAP.md text eol=lf
+app/roadmap.generated.ts text eol=lf
+desktop/src/lib/roadmap.generated.ts text eol=lf
+desktop/src/lib/recorded-session.generated.ts text eol=lf
