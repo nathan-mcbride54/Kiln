@@ -116,6 +116,7 @@ application's state model.
 
 ### OpenAI
 
+- The first-party profile is pinned to the official OpenAI origin.
 - `GET /v1/models` for connection diagnostics where permitted.
 - `POST /v1/responses` for turns.
 - `store: false` by default.
@@ -123,6 +124,7 @@ application's state model.
 
 ### Anthropic
 
+- The first-party profile is pinned to the official Anthropic origin.
 - `GET /v1/models` for diagnostics where permitted.
 - `POST /v1/messages` with a pinned `anthropic-version`.
 - Preserve typed content blocks while normalizing visible text and tool use.
@@ -130,11 +132,16 @@ application's state model.
 ### Local compatible server
 
 - Base URL is user controlled and normalized once.
+- H1-007 binds stored credential references to that normalized origin and
+  requires an explicit rebind after a destination change.
 - `GET /v1/models` probes reachability and model discovery.
 - `POST /v1/chat/completions` handles the initial chat path.
 - Tokens are optional.
 - Future diagnostics probe streaming and tool calls separately so a partially
   compatible server remains useful.
+
+The credential-destination policy is recorded in
+[ADR 0009](decisions/0009-origin-bound-provider-profiles.md).
 
 ## Application API
 
