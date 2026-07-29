@@ -661,9 +661,11 @@ mod tests {
             .unwrap();
 
         let projection = TaskProjection::rebuild(&events).unwrap();
-        let actual = serde_json::to_string_pretty(&projection).unwrap();
-        let expected = include_str!("../tests/fixtures/task-projection-v1.json");
-        assert_eq!(actual.trim(), expected.trim());
+        let actual = serde_json::to_value(&projection).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/task-projection-v1.json"))
+                .unwrap();
+        assert_eq!(actual, expected);
     }
 
     #[tokio::test]
