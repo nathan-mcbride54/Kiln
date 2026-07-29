@@ -12,6 +12,8 @@ import type {
   ProjectSnapshot,
   ProviderCapabilities,
   ProviderConfig,
+  ProviderCredentialProfile,
+  ProviderId,
   RememberedProject,
   RepositoryToolExecution,
   RepositoryToolRequest,
@@ -25,6 +27,7 @@ import {
 
 const previewActiveTurns = new Set<string>();
 const previewCancelledTurns = new Set<string>();
+const previewCredentialProfiles = new Map<ProviderId, ProviderCredentialProfile>();
 let previewProject: ProjectSnapshot = {
   projectId: "project-preview-kiln",
   displayName: "kiln",
@@ -148,6 +151,51 @@ export function listProviderCapabilities(): Promise<ProviderCapabilities[]> {
   );
 }
 
+export function listProviderCredentials(): Promise<ProviderCredentialProfile[]> {
+  return callOrPreview(
+    "list_provider_credentials",
+    {},
+    () => [...previewCredentialProfiles.values()],
+  );
+}
+
+export function saveProviderCredential(
+  provider: ProviderId,
+  secret: string,
+): Promise<ProviderCredentialProfile> {
+  return callOrPreview(
+    "save_provider_credential",
+    { request: { provider, secret } },
+    () => {
+      const profile: ProviderCredentialProfile = {
+        provider,
+        credentialRef: `cred_${crypto.randomUUID().replaceAll("-", "").slice(0, 32)}`,
+        backend:
+          navigator.platform.toLowerCase().includes("win")
+            ? "windows_credential_manager"
+            : "linux_secret_service",
+      };
+      previewCredentialProfiles.set(provider, profile);
+      return profile;
+    },
+  );
+}
+
+export function deleteProviderCredential(
+  profile: ProviderCredentialProfile,
+): Promise<void> {
+  return callOrPreview(
+    "delete_provider_credential",
+    {
+      provider: profile.provider,
+      credentialRef: profile.credentialRef,
+    },
+    () => {
+      previewCredentialProfiles.delete(profile.provider);
+    },
+  );
+}
+
 export function testProviderConnection(
   provider: ProviderConfig,
 ): Promise<ConnectionTestResponse> {
@@ -156,9 +204,7 @@ export function testProviderConnection(
     {
       request: {
         provider: provider.id,
-        credentials: {
-          apiKey: provider.apiKey || undefined,
-        },
+        credentialRef: provider.credentialRef,
         baseUrl: provider.baseUrl || undefined,
       },
     },

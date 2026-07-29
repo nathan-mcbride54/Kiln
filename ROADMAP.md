@@ -5,7 +5,7 @@
 
 | Revision | Last reviewed | Current horizon | Launch platforms | Later platforms |
 |---|---|---|---|---|
-| 1.3 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
+| 1.4 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
 
 Kiln measures progress through complete, reliable user journeys. An item is
 done only when every acceptance criterion passes on its target platforms.
@@ -14,7 +14,6 @@ done only when every acceptance criterion passes on its target platforms.
 
 | ID | Priority | Status | Outcome |
 |---|---:|---|---|
-| H1-006 | P0 | `planned` | Provider credentials survive safely without entering application data. |
 | H1-007 | P1 | `planned` | A connection test explains exactly which behaviors a model endpoint supports. |
 
 **Next review trigger:** H1 exit-gate review or any change to provider, event, permission, or platform contracts.
@@ -24,7 +23,7 @@ done only when every acceptance criterion passes on its target platforms.
 | Horizon | Status | Progress | Outcome |
 |---|---|---:|---|
 | H0 — Product foundation | Complete | 100% | A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates. |
-| H1 — Connected vertical slice | In progress | 71% | One genuine repository task completes safely through each required provider type. |
+| H1 — Connected vertical slice | In progress | 86% | One genuine repository task completes safely through each required provider type. |
 | H2 — Reliable task workspace | Planned | 0% | Kiln supports concurrent daily work that survives restarts and preserves user changes. |
 | H3 — Open agent ecosystem | Planned | 0% | Existing agents and external tools operate through Kiln's task, event, and permission surfaces. |
 | H4 — Windows and Linux beta | Planned | 0% | A polished, installable daily driver for regular personal use. |
@@ -182,7 +181,7 @@ Last reviewed 2026-07-29. Completed in revision 1.2 with green hosted Windows an
 | H1-003 | P0 | `done` | Windows, Linux | H1-002, H1-004 | Read-only file and search tools |
 | H1-004 | P0 | `done` | All | H0-007 | Central permission engine |
 | H1-005 | P0 | `done` | Windows, Linux | H1-003, H1-004 | File editing and real diff review |
-| H1-006 | P0 | `planned` | Windows, Linux | H0-006 | OS credential storage and redaction pipeline |
+| H1-006 | P0 | `done` | Windows, Linux | H0-006 | OS credential storage and redaction pipeline |
 | H1-007 | P1 | `planned` | Windows, Linux | H1-001 | Provider diagnostics and capability discovery |
 
 ### Acceptance criteria
@@ -242,11 +241,11 @@ Last reviewed 2026-07-29. Completed in revision 1.3 with bounded whole-file repl
 
 Provider credentials survive safely without entering application data.
 
-- Credential Manager and libsecret implementations store opaque profile references.
+- Credential Manager and the libsecret-compatible Linux Secret Service store opaque profile references.
 - Secret values are zeroized where practical.
 - Provider errors, diagnostics, exports, and crash reports pass central redaction tests.
 
-Last reviewed 2026-07-28. Moved ahead of broader provider onboarding polish.
+Last reviewed 2026-07-29. Completed in revision 1.4 with provider-bound opaque references, Windows Credential Manager and Linux Secret Service adapters, non-serializable zeroizing Rust secrets, central provider-error and persistence redaction, secure desktop onboarding, and cross-platform tests.
 
 #### H1-007 — Provider diagnostics and capability discovery
 
@@ -571,7 +570,7 @@ Last reviewed 2026-07-28. Not committed.
 |---|---|---|---|---|
 | RISK-001 | high | mitigated | The desktop frontend is not yet proven from a clean dependency install. | Revision 1.2 proves clean hosted Windows and Ubuntu dependency installs, checks, production builds, and complete Rust workspace tests. |
 | RISK-002 | medium | mitigated | Future orchestration work could regress into the desktop transport layer. | The workspace now isolates core, providers, platform, and Git workspace contracts from kiln-tauri; keep Tauri-free dependency checks in CI. |
-| RISK-003 | high | open | Credentials and upstream payloads may leak without OS storage and centralized redaction. | Keep credentials ephemeral and complete H1-006 before durable provider profiles. |
+| RISK-003 | high | mitigated | Credentials and upstream payloads may leak without OS storage and centralized redaction. | H1-006 stores provider-bound opaque references in application data, keeps secret values in the OS vault, zeroizes Rust buffers where practical, and applies one tested redactor to provider errors and persistence boundaries. |
 | RISK-004 | medium | mitigating | Provider defaults and roadmap content can drift across Rust, web, desktop, and documentation. | H0-005 establishes generated roadmap outputs; provider-contract generation remains H1-007. |
 | RISK-005 | medium | mitigated | Windows works locally while Linux behavior remains an architectural claim. | Windows and Ubuntu quality jobs now pass on hosted runners and are both required before main can merge. |
 | RISK-006 | medium | mitigated | Concurrent writers or corrupt event order could make restart projections untruthful. | H0-008 uses one transactional SQLite writer, database uniqueness constraints, durable-tail checks, and validated ordered replay. |
@@ -590,6 +589,7 @@ Last reviewed 2026-07-28. Not committed.
 | DEC-007 | accepted | Route every native and extension action through one guarded permission engine. | H3 extension exit | Allow, ask, deny, and ephemeral approval semantics must not vary by transport or tool source. |
 | DEC-008 | accepted | Normalize provider SSE behind ordered Tauri channels and one shared cancellation domain. | H2 crash-resume review | Streaming must remain provider-independent, durable before display, and immune to late cancellation races. |
 | DEC-009 | accepted | Require native confirmation and optimistic version checks for atomic direct-workspace edits. | H2 worktree isolation | A frontend assertion must not grant write access, stale reads must not overwrite user work, and completed edits need durable review evidence. |
+| DEC-010 | accepted | Store provider secrets in OS credential services and transport only provider-bound opaque references. | H2 export and crash-recovery work | Normal application data and frontend provider commands must not expose durable secret values, and every output boundary needs one tested redaction contract. |
 
 ## Success metrics
 
@@ -618,6 +618,16 @@ Last reviewed 2026-07-28. Not committed.
 - Progress is measured by completed user journeys and reliability gates, not feature count.
 
 ## Change history
+
+### 2026-07-29 — revision 1.4
+
+Completed OS credential storage and centralized secret redaction.
+
+- Added provider-bound opaque credential profiles backed by Windows Credential Manager and the Linux Secret Service, with serialized blocking access and replacement cleanup.
+- Removed raw credentials from normal frontend test and chat payloads, resolved references only inside the trusted Rust desktop boundary, and restored stored profile references at startup.
+- Made Rust secrets non-serializable and zeroizing on drop, while documenting the limits of JavaScript and upstream-library memory handling.
+- Applied one dynamic and structural redactor to provider errors and the SQLite persistence gate, with tests covering diagnostics, exports, crash text, injected raw credentials, and cross-provider reference misuse.
+- Completed H1-006, mitigated the credential-leak risk, accepted ADR 0008, and moved provider diagnostics and capability discovery to the active focus.
 
 ### 2026-07-29 — revision 1.3
 

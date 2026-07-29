@@ -7,5 +7,15 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+getrandom = "0.2"
+hex.workspace = true
+kiln-core = { path = "../kiln-core" }
+thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "=3.6.3", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "=3.6.3", default-features = false, features = ["async-secret-service", "tokio", "crypto-rust"] }

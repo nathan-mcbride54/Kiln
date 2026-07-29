@@ -12,8 +12,9 @@ export interface RoadmapPhase {
   outcomes: readonly string[];
 }
 
-export const roadmapRevision = "1.3";
+export const roadmapRevision = "1.4";
 export const roadmapLastReviewed = "2026-07-29";
+export const roadmapCurrentHorizon = "H1";
 export const roadmap: readonly RoadmapPhase[] = [
   {
     "id": "H0",
@@ -34,7 +35,6 @@ export const roadmap: readonly RoadmapPhase[] = [
     "status": "now",
     "summary": "One genuine repository task completes safely through each required provider type.",
     "outcomes": [
-      "OS credential storage and redaction pipeline",
       "Provider diagnostics and capability discovery"
     ]
   },

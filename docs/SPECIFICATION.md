@@ -134,7 +134,8 @@ Git worktrees isolate changes; they are not described as a security sandbox.
 - Switching models preserves task history.
 - Each adapter reports streaming, tool, image, structured-output,
   usage-reporting, and context capabilities.
-- Normalized events retain raw provider metadata for diagnostics.
+- Normalized events retain only allowlisted, redacted provider metadata for
+  diagnostics.
 - Credentials use the OS credential service in production and never enter the
   event database or exported transcripts.
 - Cancellation, timeout, health, and error classes are consistent across

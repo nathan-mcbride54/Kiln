@@ -1,12 +1,14 @@
 export type ProviderId = "openai" | "anthropic" | "local";
 export type ProviderState = "ready" | "untested" | "testing" | "error";
 export type ChatRole = "system" | "developer" | "user" | "assistant";
+export type CredentialBackend =
+  | "windows_credential_manager"
+  | "linux_secret_service";
 
-export interface ProviderCredentials {
-  apiKey?: string;
-  organization?: string;
-  project?: string;
-  customHeaders?: Record<string, string>;
+export interface ProviderCredentialProfile {
+  provider: ProviderId;
+  credentialRef: string;
+  backend: CredentialBackend;
 }
 
 export interface ProviderConfig {
@@ -18,6 +20,8 @@ export interface ProviderConfig {
   baseUrl: string;
   model: string;
   apiKey: string;
+  credentialRef?: string;
+  credentialBackend?: CredentialBackend;
   apiKeyRequired: boolean;
   state: ProviderState;
   accent: string;
@@ -57,7 +61,7 @@ export interface ChatMessage {
 
 export interface ChatRequest {
   provider: ProviderId;
-  credentials: ProviderCredentials;
+  credentialRef?: string;
   baseUrl?: string;
   model: string;
   messages: ChatMessage[];

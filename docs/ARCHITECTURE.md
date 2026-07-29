@@ -36,7 +36,7 @@ kiln-core       normalized commands, events, errors, and domain types
   │          └─ kiln-storage  SQLite event log and replay
   └─ kiln-providers  OpenAI, Anthropic, and local HTTP adapters
 
-kiln-platform   clock, paths, and future OS service traits
+kiln-platform   clock, paths, cancellation, and OS credential storage
        ↖       ↗
       kiln-tauri  desktop transport and application startup only
 ```
@@ -163,6 +163,11 @@ Later commands cover:
 
 Command inputs never contain durable secret values after onboarding. They carry
 opaque credential references resolved by the trusted Rust boundary.
+Windows Credential Manager and the Linux Secret Service hold the actual values;
+resolved secrets are non-serializable, zeroized on drop where practical, and
+registered with the central output redactor. See
+[the credential-storage guide](CREDENTIALS.md) and
+[ADR 0008](decisions/0008-os-credential-references-and-central-redaction.md).
 
 ## Event storage
 

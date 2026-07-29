@@ -2112,6 +2112,37 @@ kbd {
   font-size: 7px;
 }
 
+.credential-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.credential-button {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #373a33;
+  border-radius: 7px;
+  background: #1a1c18;
+  color: var(--ink-2);
+  font-size: 7.5px;
+  font-weight: 620;
+}
+
+.credential-button:hover:not(:disabled) {
+  border-color: #51554b;
+  color: var(--ink-0);
+}
+
+.credential-button.remove {
+  color: #d7a093;
+}
+
+.credential-button:disabled {
+  opacity: 0.45;
+}
+
 .test-button {
   display: inline-flex;
   height: 30px;
@@ -3129,6 +3160,19 @@ kbd {
   .provider-card-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .credential-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .credential-actions .test-button {
+    grid-column: 1 / -1;
+  }
+
+  .credential-button {
+    width: 100%;
   }
 
   .test-button {

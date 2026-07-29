@@ -2,14 +2,17 @@
   import { onMount } from "svelte";
   import {
     cancelTurn,
+    deleteProviderCredential,
     executeVisibleRepositoryTool,
     executeTurnStreaming,
     isDesktopRuntime,
+    listProviderCredentials,
     listRememberedProjects,
     listProviderCapabilities,
     loadApplicationEvents,
     openRepository,
     persistApplicationEvents,
+    saveProviderCredential,
     testProviderConnection,
   } from "./lib/bridge";
   import {
@@ -22,6 +25,7 @@
   import { projectInspector } from "./lib/projector.ts";
   import {
     roadmap,
+    roadmapCurrentHorizon,
     roadmapLastReviewed,
     roadmapRevision,
   } from "./lib/roadmap.generated";
@@ -31,6 +35,7 @@
     ProjectSnapshot,
     ProviderCapabilities,
     ProviderConfig,
+    ProviderCredentialProfile,
     ProviderId,
     RememberedProject,
   } from "./lib/types";
@@ -154,6 +159,7 @@
   let inspectorTab: InspectorTab = "changes";
   let draft = "";
   let capabilities: ProviderCapabilities[] = [];
+  let credentialBusy: ProviderId | undefined;
   let toast = "";
   let mobileSidebarOpen = false;
   let historyReady = !isDesktopRuntime();
@@ -185,16 +191,26 @@
   $: connectedCount = providers.filter((provider) => provider.state === "ready").length;
 
   onMount(async () => {
-    const [providerResult, historyResult, projectsResult] = await Promise.allSettled([
+    const [providerResult, credentialResult, historyResult, projectsResult] =
+      await Promise.allSettled([
       listProviderCapabilities(),
+      listProviderCredentials(),
       isDesktopRuntime()
         ? loadApplicationEvents(taskStreamId)
         : Promise.resolve(initialSessionEvents),
       listRememberedProjects(),
-    ]);
+      ]);
 
     capabilities =
       providerResult.status === "fulfilled" ? providerResult.value : [];
+    if (credentialResult.status === "fulfilled") {
+      for (const profile of credentialResult.value) {
+        patchProvider(profile.provider, {
+          credentialRef: profile.credentialRef,
+          credentialBackend: profile.backend,
+        });
+      }
+    }
 
     try {
       if (historyResult.status === "fulfilled") {
@@ -336,10 +352,10 @@
     const provider = providers.find((item) => item.id === id);
     if (!provider) return;
 
-    if (provider.apiKeyRequired && !provider.apiKey.trim()) {
+    if (provider.apiKeyRequired && !provider.credentialRef) {
       patchProvider(id, {
         state: "error",
-        message: "Add a key for this session before testing.",
+        message: "Save a key securely before testing.",
       });
       return;
     }
@@ -367,6 +383,85 @@
     window.setTimeout(() => (toast = ""), 3200);
   }
 
+  async function storeCredential(id: ProviderId): Promise<void> {
+    const provider = providers.find((item) => item.id === id);
+    if (!provider || credentialBusy) return;
+    if (!provider.apiKey.trim()) {
+      patchProvider(id, {
+        state: "error",
+        message: "Enter a key before saving it.",
+      });
+      return;
+    }
+
+    credentialBusy = id;
+    try {
+      const profile = await saveProviderCredential(id, provider.apiKey);
+      patchProvider(id, {
+        apiKey: "",
+        credentialRef: profile.credentialRef,
+        credentialBackend: profile.backend,
+        state: "untested",
+        message: `Saved in ${credentialBackendLabel(profile)}.`,
+      });
+      toast = `${provider.name} credential saved securely`;
+    } catch (error) {
+      patchProvider(id, {
+        state: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The credential could not be saved.",
+      });
+      toast = `Couldn’t save the ${provider.name} credential`;
+    } finally {
+      credentialBusy = undefined;
+      window.setTimeout(() => (toast = ""), 3600);
+    }
+  }
+
+  async function removeCredential(id: ProviderId): Promise<void> {
+    const provider = providers.find((item) => item.id === id);
+    if (!provider?.credentialRef || !provider.credentialBackend || credentialBusy) {
+      return;
+    }
+    credentialBusy = id;
+    const profile: ProviderCredentialProfile = {
+      provider: id,
+      credentialRef: provider.credentialRef,
+      backend: provider.credentialBackend,
+    };
+    try {
+      await deleteProviderCredential(profile);
+      patchProvider(id, {
+        apiKey: "",
+        credentialRef: undefined,
+        credentialBackend: undefined,
+        state: "untested",
+        latency: undefined,
+        message: "Stored credential removed.",
+      });
+      toast = `${provider.name} credential removed`;
+    } catch (error) {
+      patchProvider(id, {
+        state: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The credential could not be removed.",
+      });
+    } finally {
+      credentialBusy = undefined;
+      window.setTimeout(() => (toast = ""), 3600);
+    }
+  }
+
+  function credentialBackendLabel(profile: ProviderCredentialProfile): string {
+    return profile.backend === "windows_credential_manager"
+      ? "Windows Credential Manager"
+      : "Linux Secret Service";
+  }
+
   async function submitPrompt(): Promise<void> {
     const content = draft.trim();
     if (!activeProject) {
@@ -374,6 +469,12 @@
       return;
     }
     if (!content || running || submitting || !historyReady) return;
+    if (activeProvider.apiKeyRequired && !activeProvider.credentialRef) {
+      activeView = "connections";
+      toast = `Save a ${activeProvider.name} credential before starting a turn.`;
+      window.setTimeout(() => (toast = ""), 4200);
+      return;
+    }
     submitting = true;
 
     const messageId = crypto.randomUUID();
@@ -413,9 +514,7 @@
         await executeTurnStreaming(
           {
             provider: activeProvider.id,
-            credentials: {
-              apiKey: activeProvider.apiKey || undefined,
-            },
+            credentialRef: activeProvider.credentialRef,
             baseUrl: activeProvider.baseUrl || undefined,
             model: activeProvider.model,
             messages: requestMessages,
@@ -707,7 +806,7 @@
         >
           <span class="nav-icon">◇</span>
           <span>Roadmap</span>
-          <span class="nav-count">H0</span>
+          <span class="nav-count">{roadmapCurrentHorizon}</span>
         </button>
       </nav>
     </div>
@@ -1157,14 +1256,14 @@
             <h1>Bring the models you trust.</h1>
             <p>
               Cloud-native protocols when available, one open route for your own server.
-              Secrets live only in this running session.
+              Secrets stay in your operating system’s credential vault.
             </p>
           </div>
           <div class="security-pill">
             <span>⌁</span>
             <div>
-              <strong>Session-only credentials</strong>
-              <small>Never written to project files or browser storage</small>
+              <strong>OS-backed credentials</strong>
+              <small>Only opaque references enter Kiln’s application data</small>
             </div>
           </div>
         </header>
@@ -1209,11 +1308,13 @@
                       autocomplete="off"
                       spellcheck="false"
                       value={provider.apiKey}
-                      placeholder={provider.id === "openai"
-                        ? "sk-proj-…"
-                        : provider.id === "anthropic"
-                          ? "sk-ant-…"
-                          : "Optional bearer token"}
+                      placeholder={provider.credentialRef
+                        ? "Enter a replacement key"
+                        : provider.id === "openai"
+                          ? "sk-proj-…"
+                          : provider.id === "anthropic"
+                            ? "sk-ant-…"
+                            : "Optional bearer token"}
                       oninput={(event) =>
                         patchProvider(provider.id, {
                           apiKey: event.currentTarget.value,
@@ -1221,7 +1322,7 @@
                           message: undefined,
                         })}
                     />
-                    <span>session</span>
+                    <span>{provider.credentialRef ? "stored" : "unsaved"}</span>
                   </div>
                 </label>
 
@@ -1262,22 +1363,48 @@
                   {:else}
                     <span>
                       {provider.id === "local"
-                        ? "Key is optional for local routes"
-                        : "Key is held in memory only"}
+                        ? "A stored key is optional for local routes"
+                        : provider.credentialRef
+                          ? "Credential is stored by the operating system"
+                          : "No credential is stored yet"}
                     </span>
                   {/if}
                   {#if provider.latency}
                     <strong>{provider.latency} ms</strong>
                   {/if}
                 </div>
-                <button
-                  class="test-button"
-                  type="submit"
-                  disabled={provider.state === "testing"}
-                >
-                  {provider.state === "testing" ? "Testing…" : "Test connection"}
-                  <span>→</span>
-                </button>
+                <div class="credential-actions">
+                  {#if provider.credentialRef}
+                    <button
+                      class="credential-button remove"
+                      type="button"
+                      disabled={credentialBusy === provider.id}
+                      onclick={() => void removeCredential(provider.id)}
+                    >
+                      Remove
+                    </button>
+                  {/if}
+                  <button
+                    class="credential-button"
+                    type="button"
+                    disabled={!provider.apiKey.trim() || credentialBusy === provider.id}
+                    onclick={() => void storeCredential(provider.id)}
+                  >
+                    {credentialBusy === provider.id
+                      ? "Saving…"
+                      : provider.credentialRef
+                        ? "Replace key"
+                        : "Save securely"}
+                  </button>
+                  <button
+                    class="test-button"
+                    type="submit"
+                    disabled={provider.state === "testing" || credentialBusy === provider.id}
+                  >
+                    {provider.state === "testing" ? "Testing…" : "Test connection"}
+                    <span>→</span>
+                  </button>
+                </div>
               </div>
             </form>
           {/each}

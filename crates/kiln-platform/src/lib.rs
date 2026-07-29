@@ -4,12 +4,16 @@
 //! traits. Keeping the contracts in a Tauri-free crate lets the same core run
 //! in desktop, CLI, tests, and future headless processes.
 
+mod credentials;
+
 use std::{
     future::Future,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio_util::sync::CancellationToken as TokioCancellationToken;
+
+pub use credentials::{CredentialStoreError, OsCredentialStore};
 
 /// Supplies deterministic wall-clock time to domain services.
 pub trait Clock: Send + Sync {

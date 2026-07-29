@@ -7,10 +7,12 @@ use std::{
 
 pub use kiln_core::{
     ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, CommandError,
-    ConnectionTestRequest, ConnectionTestResponse, ErrorCode, EventEnvelope, ProviderCapabilities,
-    ProviderCredentials, ProviderKind, ProviderProtocol, SecretString, StreamId, TokenUsage,
+    ConnectionTestRequest, ConnectionTestResponse, CredentialBackendKind, CredentialProfileRef,
+    CredentialSaveRequest, ErrorCode, EventEnvelope, ProviderCapabilities,
+    ProviderCredentialProfile, ProviderCredentials, ProviderKind, ProviderProtocol, SecretString,
+    StreamId, TokenUsage,
 };
-use kiln_platform::{CancellationToken, SystemClock};
+use kiln_platform::{CancellationToken, OsCredentialStore, SystemClock};
 use kiln_providers::ProviderService;
 use kiln_storage::SqliteEventStore;
 use kiln_workspace::{GitRepositoryInspector, WorkspaceToolService};
@@ -18,6 +20,7 @@ use tauri::Manager;
 
 pub(crate) struct AppState {
     pub(crate) providers: ProviderService,
+    pub(crate) credentials: OsCredentialStore,
     pub(crate) storage: SqliteEventStore,
     pub(crate) active_turns: TurnCancellationRegistry,
     pub(crate) repositories: GitRepositoryInspector,
@@ -29,6 +32,7 @@ impl AppState {
     fn new(storage: SqliteEventStore) -> Self {
         Self {
             providers: ProviderService::new(),
+            credentials: OsCredentialStore::new(),
             storage,
             active_turns: TurnCancellationRegistry::default(),
             repositories: GitRepositoryInspector::default(),
@@ -96,6 +100,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_provider_capabilities,
+            commands::list_provider_credentials,
+            commands::save_provider_credential,
+            commands::delete_provider_credential,
             commands::test_connection,
             commands::send_chat_request,
             commands::start_chat_stream,

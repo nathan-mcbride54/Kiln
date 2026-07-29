@@ -13,6 +13,7 @@ pub enum ErrorCode {
     NetworkFailure,
     ProviderFailure,
     MalformedResponse,
+    CredentialFailure,
     StorageFailure,
     PermissionDenied,
     Cancelled,
