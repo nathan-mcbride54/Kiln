@@ -12,8 +12,8 @@ export interface RoadmapPhase {
   outcomes: readonly string[];
 }
 
-export const roadmapRevision = "1.1";
-export const roadmapLastReviewed = "2026-07-28";
+export const roadmapRevision = "1.2";
+export const roadmapLastReviewed = "2026-07-29";
 export const roadmap: readonly RoadmapPhase[] = [
   {
     "id": "H0",
@@ -22,8 +22,9 @@ export const roadmap: readonly RoadmapPhase[] = [
     "status": "now",
     "summary": "A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates.",
     "outcomes": [
-      "Reproducible Svelte/Tauri desktop build",
-      "Windows and Linux continuous integration"
+      "Product language and interactive preview",
+      "Typed provider boundary",
+      "Product specification and architecture"
     ]
   },
   {

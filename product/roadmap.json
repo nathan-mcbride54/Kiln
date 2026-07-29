@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "product": "Kiln",
-  "revision": "1.1",
-  "lastReviewed": "2026-07-28",
-  "currentHorizon": "H0",
+  "revision": "1.2",
+  "lastReviewed": "2026-07-29",
+  "currentHorizon": "H1",
   "releaseTargets": ["Windows", "Linux"],
   "laterPlatforms": ["macOS"],
-  "nextReviewTrigger": "H0 exit-gate review or any change to provider, event, permission, or platform contracts",
+  "nextReviewTrigger": "H1 exit-gate review or any change to provider, event, permission, or platform contracts",
   "statusDefinitions": {
     "discovery": "Problem and success measure are being defined.",
     "planned": "Accepted scope with dependencies and acceptance criteria.",
@@ -17,8 +17,6 @@
     "deferred": "Intentionally postponed with the reason kept visible."
   },
   "focus": [
-    "H0-004",
-    "H0-010",
     "H1-005",
     "H1-006"
   ],
@@ -36,7 +34,7 @@
     {
       "id": "H0",
       "title": "Product foundation",
-      "statusLabel": "In progress",
+      "statusLabel": "Complete",
       "lane": "now",
       "timeframe": "Current",
       "outcome": "A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates.",
@@ -101,7 +99,7 @@
           "id": "H0-004",
           "title": "Reproducible Svelte/Tauri desktop build",
           "outcome": "A contributor can install, check, build, and launch the native shell from a clean checkout.",
-          "status": "in_progress",
+          "status": "done",
           "priority": "P0",
           "platforms": ["Windows", "Linux"],
           "dependencies": [],
@@ -111,8 +109,8 @@
             "Tauri launches the generated frontend through the typed Rust commands.",
             "A clean Windows build passes; a clean Linux build passes in CI."
           ],
-          "lastReviewed": "2026-07-28",
-          "changeNote": "Revision 1.0 adds the desktop lockfile, aligns Svelte's Vite plugin with Vite 8, migrates minification to Oxc, and proves a clean Windows install, type check, and production build. The first hosted Linux build remains."
+          "lastReviewed": "2026-07-29",
+          "changeNote": "Completed in revision 1.2 after clean hosted Windows and Ubuntu installs, Svelte checks, production builds, and complete Rust workspace builds passed."
         },
         {
           "id": "H0-005",
@@ -200,7 +198,7 @@
           "id": "H0-010",
           "title": "Windows and Linux continuous integration",
           "outcome": "Cross-platform claims are proved on every change.",
-          "status": "in_progress",
+          "status": "done",
           "priority": "P0",
           "platforms": ["Windows", "Linux"],
           "dependencies": ["H0-004", "H0-006"],
@@ -209,8 +207,8 @@
             "Fixtures cover spaces, Unicode paths, line endings, and process cancellation.",
             "Release-blocking failures are visible before merge."
           ],
-          "lastReviewed": "2026-07-28",
-          "changeNote": "Revision 0.7 adds a Windows/Ubuntu quality matrix and executable path, Unicode, line-ending, and cancellation fixtures. Revision 1.0 supplies the desktop lockfile; hosted runs and required-check configuration remain."
+          "lastReviewed": "2026-07-29",
+          "changeNote": "Completed in revision 1.2 with green hosted Windows and Ubuntu jobs, portable generated-file and projection fixtures, and both quality jobs required by main-branch protection."
         }
       ]
     },
@@ -684,9 +682,9 @@
     {
       "id": "RISK-001",
       "severity": "high",
-      "status": "mitigating",
+      "status": "mitigated",
       "risk": "The desktop frontend is not yet proven from a clean dependency install.",
-      "mitigation": "Revision 1.0 commits desktop/package-lock.json and proves a clean Windows install, check, and build. Confirm the first hosted Ubuntu build before closing the risk."
+      "mitigation": "Revision 1.2 proves clean hosted Windows and Ubuntu dependency installs, checks, production builds, and complete Rust workspace tests."
     },
     {
       "id": "RISK-002",
@@ -712,9 +710,9 @@
     {
       "id": "RISK-005",
       "severity": "medium",
-      "status": "mitigating",
+      "status": "mitigated",
       "risk": "Windows works locally while Linux behavior remains an architectural claim.",
-      "mitigation": "H0-010 now defines Windows and Ubuntu jobs plus platform fixtures; confirm the first hosted Linux run and require both checks."
+      "mitigation": "Windows and Ubuntu quality jobs now pass on hosted runners and are both required before main can merge."
     },
     {
       "id": "RISK-006",
@@ -801,6 +799,17 @@
     "Installer and update success by platform"
   ],
   "changeLog": [
+    {
+      "date": "2026-07-29",
+      "revision": "1.2",
+      "summary": "Closed the cross-platform foundation gates and protected the public main branch.",
+      "changes": [
+        "Forced byte-checked generated artifacts to stable LF checkout semantics and made the SQLite projection snapshot compare structured JSON instead of platform line endings.",
+        "Passed the complete hosted quality workflow on Windows and Ubuntu, including generated fixtures, web and desktop builds, formatting, Clippy, and all Rust tests.",
+        "Protected main behind pull requests, current-branch checks, resolved review conversations, and force-push and deletion prevention.",
+        "Marked the reproducible desktop build and Windows/Linux CI items complete, closed their platform risks, and moved the active roadmap horizon to H1."
+      ]
+    },
     {
       "date": "2026-07-28",
       "revision": "1.0",

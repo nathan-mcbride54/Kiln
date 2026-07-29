@@ -5,7 +5,7 @@
 
 | Revision | Last reviewed | Current horizon | Launch platforms | Later platforms |
 |---|---|---|---|---|
-| 1.1 | 2026-07-28 | H0 — Product foundation | Windows and Linux | macOS |
+| 1.2 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
 
 Kiln measures progress through complete, reliable user journeys. An item is
 done only when every acceptance criterion passes on its target platforms.
@@ -14,18 +14,16 @@ done only when every acceptance criterion passes on its target platforms.
 
 | ID | Priority | Status | Outcome |
 |---|---:|---|---|
-| H0-004 | P0 | `in_progress` | A contributor can install, check, build, and launch the native shell from a clean checkout. |
-| H0-010 | P0 | `in_progress` | Cross-platform claims are proved on every change. |
 | H1-005 | P0 | `planned` | Users can inspect every agent change before accepting it. |
 | H1-006 | P0 | `planned` | Provider credentials survive safely without entering application data. |
 
-**Next review trigger:** H0 exit-gate review or any change to provider, event, permission, or platform contracts.
+**Next review trigger:** H1 exit-gate review or any change to provider, event, permission, or platform contracts.
 
 ## Horizon overview
 
 | Horizon | Status | Progress | Outcome |
 |---|---|---:|---|
-| H0 — Product foundation | In progress | 80% | A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates. |
+| H0 — Product foundation | Complete | 100% | A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates. |
 | H1 — Connected vertical slice | In progress | 57% | One genuine repository task completes safely through each required provider type. |
 | H2 — Reliable task workspace | Planned | 0% | Kiln supports concurrent daily work that survives restarts and preserves user changes. |
 | H3 — Open agent ecosystem | Planned | 0% | Existing agents and external tools operate through Kiln's task, event, and permission surfaces. |
@@ -36,7 +34,7 @@ done only when every acceptance criterion passes on its target platforms.
 
 ## H0 — Product foundation
 
-**Lane:** now · **Status:** In progress · **Timeframe:** Current
+**Lane:** now · **Status:** Complete · **Timeframe:** Current
 
 **Outcome:** A coherent product shell with stable contracts, deterministic replay, and clean Windows/Linux build gates.
 
@@ -47,13 +45,13 @@ done only when every acceptance criterion passes on its target platforms.
 | H0-001 | P0 | `done` | Web, Windows, Linux | — | Product language and interactive preview |
 | H0-002 | P0 | `done` | Windows, Linux | — | Typed provider boundary |
 | H0-003 | P0 | `done` | All | — | Product specification and architecture |
-| H0-004 | P0 | `in_progress` | Windows, Linux | — | Reproducible Svelte/Tauri desktop build |
+| H0-004 | P0 | `done` | Windows, Linux | — | Reproducible Svelte/Tauri desktop build |
 | H0-005 | P0 | `done` | All | H0-003 | Living roadmap automation |
 | H0-006 | P0 | `done` | Windows, Linux, macOS-ready | H0-002 | Extract the UI-independent Rust core |
 | H0-007 | P0 | `done` | All | H0-006 | Versioned command and event contract |
 | H0-008 | P0 | `done` | Windows, Linux | H0-007 | SQLite event log and deterministic projections |
 | H0-009 | P0 | `done` | Windows, Linux | H0-007, H0-008 | Recorded fake-session replay |
-| H0-010 | P0 | `in_progress` | Windows, Linux | H0-004, H0-006 | Windows and Linux continuous integration |
+| H0-010 | P0 | `done` | Windows, Linux | H0-004, H0-006 | Windows and Linux continuous integration |
 
 ### Acceptance criteria
 
@@ -96,7 +94,7 @@ A contributor can install, check, build, and launch the native shell from a clea
 - Tauri launches the generated frontend through the typed Rust commands.
 - A clean Windows build passes; a clean Linux build passes in CI.
 
-Last reviewed 2026-07-28. Revision 1.0 adds the desktop lockfile, aligns Svelte's Vite plugin with Vite 8, migrates minification to Oxc, and proves a clean Windows install, type check, and production build. The first hosted Linux build remains.
+Last reviewed 2026-07-29. Completed in revision 1.2 after clean hosted Windows and Ubuntu installs, Svelte checks, production builds, and complete Rust workspace builds passed.
 
 #### H0-005 — Living roadmap automation
 
@@ -158,7 +156,7 @@ Cross-platform claims are proved on every change.
 - Fixtures cover spaces, Unicode paths, line endings, and process cancellation.
 - Release-blocking failures are visible before merge.
 
-Last reviewed 2026-07-28. Revision 0.7 adds a Windows/Ubuntu quality matrix and executable path, Unicode, line-ending, and cancellation fixtures. Revision 1.0 supplies the desktop lockfile; hosted runs and required-check configuration remain.
+Last reviewed 2026-07-29. Completed in revision 1.2 with green hosted Windows and Ubuntu jobs, portable generated-file and projection fixtures, and both quality jobs required by main-branch protection.
 
 ### Exit gates
 
@@ -571,11 +569,11 @@ Last reviewed 2026-07-28. Not committed.
 
 | ID | Severity | Status | Risk | Mitigation |
 |---|---|---|---|---|
-| RISK-001 | high | mitigating | The desktop frontend is not yet proven from a clean dependency install. | Revision 1.0 commits desktop/package-lock.json and proves a clean Windows install, check, and build. Confirm the first hosted Ubuntu build before closing the risk. |
+| RISK-001 | high | mitigated | The desktop frontend is not yet proven from a clean dependency install. | Revision 1.2 proves clean hosted Windows and Ubuntu dependency installs, checks, production builds, and complete Rust workspace tests. |
 | RISK-002 | medium | mitigated | Future orchestration work could regress into the desktop transport layer. | The workspace now isolates core, providers, platform, and Git workspace contracts from kiln-tauri; keep Tauri-free dependency checks in CI. |
 | RISK-003 | high | open | Credentials and upstream payloads may leak without OS storage and centralized redaction. | Keep credentials ephemeral and complete H1-006 before durable provider profiles. |
 | RISK-004 | medium | mitigating | Provider defaults and roadmap content can drift across Rust, web, desktop, and documentation. | H0-005 establishes generated roadmap outputs; provider-contract generation remains H1-007. |
-| RISK-005 | medium | mitigating | Windows works locally while Linux behavior remains an architectural claim. | H0-010 now defines Windows and Ubuntu jobs plus platform fixtures; confirm the first hosted Linux run and require both checks. |
+| RISK-005 | medium | mitigated | Windows works locally while Linux behavior remains an architectural claim. | Windows and Ubuntu quality jobs now pass on hosted runners and are both required before main can merge. |
 | RISK-006 | medium | mitigated | Concurrent writers or corrupt event order could make restart projections untruthful. | H0-008 uses one transactional SQLite writer, database uniqueness constraints, durable-tail checks, and validated ordered replay. |
 | RISK-007 | high | mitigated | Provider bytes arriving after cancellation could rewrite a terminal turn or leave background work active. | H1-001 shares cancellation across HTTP and jobs, gives cancellation race priority, stops the channel at one terminal batch, and blocks late mutations in both projectors. |
 
@@ -619,6 +617,15 @@ Last reviewed 2026-07-28. Not committed.
 - Progress is measured by completed user journeys and reliability gates, not feature count.
 
 ## Change history
+
+### 2026-07-29 — revision 1.2
+
+Closed the cross-platform foundation gates and protected the public main branch.
+
+- Forced byte-checked generated artifacts to stable LF checkout semantics and made the SQLite projection snapshot compare structured JSON instead of platform line endings.
+- Passed the complete hosted quality workflow on Windows and Ubuntu, including generated fixtures, web and desktop builds, formatting, Clippy, and all Rust tests.
+- Protected main behind pull requests, current-branch checks, resolved review conversations, and force-push and deletion prevention.
+- Marked the reproducible desktop build and Windows/Linux CI items complete, closed their platform risks, and moved the active roadmap horizon to H1.
 
 ### 2026-07-28 — revision 1.0
 
