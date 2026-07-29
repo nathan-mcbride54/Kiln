@@ -13,6 +13,7 @@ use super::{
     ProviderAdapter, ResolvedProviderDestination, SseFramer,
 };
 use crate::error::ProviderError;
+use crate::tool_turn::{ProviderTurnEvent, ToolTurnCodec};
 
 const MODELS_TIMEOUT: Duration = Duration::from_secs(15);
 const INFERENCE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -545,22 +546,38 @@ fn validate_diagnostic_stream(
         (ProviderProtocol::OpenAiResponses, InferenceProbe::TextStreaming) => {
             validate_openai_text(events)
         }
-        (ProviderProtocol::OpenAiResponses, InferenceProbe::ToolStreaming) => {
-            validate_openai_tool(events)
+        (ProviderProtocol::OpenAiResponses, InferenceProbe::ToolStreaming)
+        | (ProviderProtocol::AnthropicMessages, InferenceProbe::ToolStreaming)
+        | (ProviderProtocol::OpenAiChatCompletions, InferenceProbe::ToolStreaming) => {
+            validate_tool_stream(protocol, events)
         }
         (ProviderProtocol::AnthropicMessages, InferenceProbe::TextStreaming) => {
             validate_anthropic_text(events)
         }
-        (ProviderProtocol::AnthropicMessages, InferenceProbe::ToolStreaming) => {
-            validate_anthropic_tool(events)
-        }
         (ProviderProtocol::OpenAiChatCompletions, InferenceProbe::TextStreaming) => {
             validate_compatible_text(events)
         }
-        (ProviderProtocol::OpenAiChatCompletions, InferenceProbe::ToolStreaming) => {
-            validate_compatible_tool(events)
+    }
+}
+
+fn validate_tool_stream(protocol: ProviderProtocol, events: &[String]) -> bool {
+    let mut codec = ToolTurnCodec::new(protocol);
+    let mut calls = Vec::new();
+    for event in events {
+        let decoded = match codec.push(event) {
+            Ok(decoded) => decoded,
+            Err(_) => return false,
+        };
+        for event in decoded {
+            if let ProviderTurnEvent::ToolCall { call } = event {
+                calls.push(call);
+            }
         }
     }
+    codec.finish().is_ok()
+        && calls.len() == 1
+        && calls[0].name() == CAPABILITY_TOOL
+        && valid_probe_arguments(Some(calls[0].arguments()))
 }
 
 fn json_events(events: &[String]) -> Option<Vec<Value>> {
@@ -588,47 +605,6 @@ fn validate_openai_text(events: &[String]) -> bool {
     delta && completed
 }
 
-fn validate_openai_tool(events: &[String]) -> bool {
-    let Some(values) = json_events(events) else {
-        return false;
-    };
-    let mut arguments = None;
-    let mut named = false;
-    for value in &values {
-        let item = value.get("item");
-        let matches = item
-            .and_then(|item| item.get("type"))
-            .and_then(Value::as_str)
-            == Some("function_call")
-            && item
-                .and_then(|item| item.get("name"))
-                .and_then(Value::as_str)
-                == Some(CAPABILITY_TOOL);
-        if matches {
-            named = true;
-            if let Some(value) = item
-                .and_then(|item| item.get("arguments"))
-                .and_then(Value::as_str)
-                .filter(|value| !value.is_empty())
-            {
-                arguments = Some(value.to_owned());
-            }
-        }
-        if value.get("type").and_then(Value::as_str)
-            == Some("response.function_call_arguments.done")
-        {
-            arguments = value
-                .get("arguments")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-        }
-    }
-    let completed = values
-        .iter()
-        .any(|value| value.get("type").and_then(Value::as_str) == Some("response.completed"));
-    named && completed && valid_probe_arguments(arguments.as_deref())
-}
-
 fn validate_anthropic_text(events: &[String]) -> bool {
     let Some(values) = json_events(events) else {
         return false;
@@ -649,52 +625,6 @@ fn validate_anthropic_text(events: &[String]) -> bool {
     started && delta && stopped
 }
 
-fn validate_anthropic_tool(events: &[String]) -> bool {
-    let Some(values) = json_events(events) else {
-        return false;
-    };
-    let mut input = None;
-    let named = values.iter().any(|value| {
-        let block = value.get("content_block");
-        let matches = value.get("type").and_then(Value::as_str) == Some("content_block_start")
-            && block
-                .and_then(|block| block.get("type"))
-                .and_then(Value::as_str)
-                == Some("tool_use")
-            && block
-                .and_then(|block| block.get("name"))
-                .and_then(Value::as_str)
-                == Some(CAPABILITY_TOOL);
-        if matches {
-            input = block
-                .and_then(|block| block.get("input"))
-                .filter(|value| !value.as_object().is_some_and(|object| object.is_empty()))
-                .cloned();
-        }
-        matches
-    });
-    if input.is_none() {
-        let arguments = values
-            .iter()
-            .filter_map(|value| {
-                (value.pointer("/delta/type").and_then(Value::as_str) == Some("input_json_delta"))
-                    .then(|| value.pointer("/delta/partial_json").and_then(Value::as_str))
-                    .flatten()
-            })
-            .collect::<String>();
-        if !arguments.is_empty() {
-            input = serde_json::from_str(&arguments).ok();
-        }
-    }
-    let tool_stop = values.iter().any(|value| {
-        value.pointer("/delta/stop_reason").and_then(Value::as_str) == Some("tool_use")
-    });
-    let stopped = values
-        .iter()
-        .any(|value| value.get("type").and_then(Value::as_str) == Some("message_stop"));
-    named && tool_stop && stopped && valid_probe_value(input.as_ref())
-}
-
 fn validate_compatible_text(events: &[String]) -> bool {
     let Some(values) = json_events(events) else {
         return false;
@@ -712,37 +642,6 @@ fn validate_compatible_text(events: &[String]) -> bool {
                 .is_some_and(|reason| !reason.is_null())
         });
     delta && terminal
-}
-
-fn validate_compatible_tool(events: &[String]) -> bool {
-    let Some(values) = json_events(events) else {
-        return false;
-    };
-    let mut named = false;
-    let mut arguments = String::new();
-    for value in &values {
-        let Some(calls) = value
-            .pointer("/choices/0/delta/tool_calls")
-            .and_then(Value::as_array)
-        else {
-            continue;
-        };
-        for call in calls {
-            if call.pointer("/function/name").and_then(Value::as_str) == Some(CAPABILITY_TOOL) {
-                named = true;
-            }
-            if let Some(delta) = call.pointer("/function/arguments").and_then(Value::as_str) {
-                arguments.push_str(delta);
-            }
-        }
-    }
-    let terminal = values.iter().any(|value| {
-        value
-            .pointer("/choices/0/finish_reason")
-            .and_then(Value::as_str)
-            == Some("tool_calls")
-    });
-    named && terminal && valid_probe_arguments(Some(&arguments))
 }
 
 fn valid_probe_arguments(arguments: Option<&str>) -> bool {
@@ -972,17 +871,23 @@ mod tests {
                 "type": "response.output_item.added",
                 "item": {
                     "type": "function_call",
+                    "id": "fc_probe",
+                    "call_id": "call_probe",
                     "name": CAPABILITY_TOOL,
                     "arguments": ""
                 }
             })),
             event(json!({
                 "type": "response.function_call_arguments.done",
+                "item_id": "fc_probe",
                 "arguments": "{\"value\":\"ok\"}"
             })),
             event(json!({"type": "response.completed", "response": {}})),
         ];
-        assert!(validate_openai_tool(&tool));
+        assert!(validate_tool_stream(
+            ProviderProtocol::OpenAiResponses,
+            &tool
+        ));
     }
 
     #[test]
@@ -1000,19 +905,25 @@ mod tests {
         let tool = vec![
             event(json!({
                 "type": "content_block_start",
+                "index": 0,
                 "content_block": {
                     "type": "tool_use",
+                    "id": "toolu_probe",
                     "name": CAPABILITY_TOOL,
                     "input": {"value": "ok"}
                 }
             })),
+            event(json!({"type": "content_block_stop", "index": 0})),
             event(json!({
                 "type": "message_delta",
                 "delta": {"stop_reason": "tool_use"}
             })),
             event(json!({"type": "message_stop"})),
         ];
-        assert!(validate_anthropic_tool(&tool));
+        assert!(validate_tool_stream(
+            ProviderProtocol::AnthropicMessages,
+            &tool
+        ));
     }
 
     #[test]
@@ -1029,6 +940,8 @@ mod tests {
                 "choices": [{
                     "delta": {
                         "tool_calls": [{
+                            "index": 0,
+                            "id": "call_probe",
                             "function": {
                                 "name": CAPABILITY_TOOL,
                                 "arguments": "{\"value\":"
@@ -1041,6 +954,7 @@ mod tests {
                 "choices": [{
                     "delta": {
                         "tool_calls": [{
+                            "index": 0,
                             "function": {"arguments": "\"ok\"}"}
                         }]
                     },
@@ -1049,7 +963,10 @@ mod tests {
             })),
             "[DONE]".to_owned(),
         ];
-        assert!(validate_compatible_tool(&tool));
+        assert!(validate_tool_stream(
+            ProviderProtocol::OpenAiChatCompletions,
+            &tool
+        ));
     }
 
     #[test]
@@ -1058,30 +975,41 @@ mod tests {
             "type": "response.output_text.delta",
             "delta": "OK"
         }))]));
-        assert!(!validate_anthropic_tool(&[
-            event(json!({
-                "type": "content_block_start",
-                "content_block": {
-                    "type": "tool_use",
-                    "name": "something_else",
-                    "input": {"value": "ok"}
-                }
-            })),
-            event(json!({"type": "message_stop"})),
-        ]));
-        assert!(!validate_compatible_tool(&[event(json!({
-            "choices": [{
-                "delta": {
-                    "tool_calls": [{
-                        "function": {
-                            "name": CAPABILITY_TOOL,
-                            "arguments": "not-json"
-                        }
-                    }]
-                },
-                "finish_reason": "tool_calls"
-            }]
-        }))]));
+        assert!(!validate_tool_stream(
+            ProviderProtocol::AnthropicMessages,
+            &[
+                event(json!({
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "toolu_wrong",
+                        "name": "something_else",
+                        "input": {"value": "ok"}
+                    }
+                })),
+                event(json!({"type": "content_block_stop", "index": 0})),
+                event(json!({"type": "message_stop"})),
+            ]
+        ));
+        assert!(!validate_tool_stream(
+            ProviderProtocol::OpenAiChatCompletions,
+            &[event(json!({
+                "choices": [{
+                    "delta": {
+                        "tool_calls": [{
+                            "index": 0,
+                            "id": "call_bad",
+                            "function": {
+                                "name": CAPABILITY_TOOL,
+                                "arguments": "not-json"
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            }))]
+        ));
         assert!(!valid_probe_value(Some(&json!({
             "value": "ok",
             "unexpected": true

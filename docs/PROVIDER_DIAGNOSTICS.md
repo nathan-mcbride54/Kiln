@@ -103,6 +103,10 @@ the required structured call shape. It does not prove that Kiln can execute a
 provider-driven task, route a proposed tool through policy, return a causal
 result, or stop denied and cancelled calls without side effects.
 
+The tool probe and the production H1-008 path now share the same bounded
+tool-call accumulator. This removes parser drift, but it still does not execute
+the synthetic call or prove the orchestration loop.
+
 Those end-to-end guarantees belong to H1-008. Its cross-provider
 read-edit-review fixture must exercise the real orchestration loop through
 OpenAI, Anthropic, and a compatible local endpoint before the H1 exit gate can
@@ -113,7 +117,8 @@ close.
 - `kiln-core` owns the normalized probe, status, overall result, capability,
   and origin types.
 - `kiln-providers` owns destination validation, bounded requests, and
-  protocol-specific stream evidence.
+  protocol-specific stream evidence. Diagnostics and production tool turns
+  share the same transient codec.
 - `kiln-platform` owns versioned origin-bound aliases in the OS credential
   service.
 - The Svelte desktop consumes the Rust capability and diagnostic contracts.

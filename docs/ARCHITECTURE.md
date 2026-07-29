@@ -25,7 +25,9 @@ SQLite events + OS credential service
 
 The deployed React preview demonstrates the product and provider onboarding.
 The production desktop interface is Svelte. Both are clients of equivalent
-application boundaries; neither owns orchestration rules.
+application boundaries. The target architecture keeps orchestration in Rust;
+until H1-008 finishes, the live desktop still assigns turn causality and tool
+lifecycle events, which is tracked as an open boundary risk.
 
 ## Rust workspace
 
@@ -111,6 +113,21 @@ Normalized errors include authentication, rate limit, invalid request,
 unsupported capability, timeout, cancelled, unavailable, malformed response,
 and internal adapter failure. Provider payloads remain metadata, never the
 application's state model.
+
+### Transient provider tool turns
+
+`kiln-core` defines the strict repository-tool catalog and typed outcomes.
+`kiln-providers` converts fragmented OpenAI, Anthropic, and compatible tool
+streams into transient `ProviderToolCall` values. Provider-native handles and
+raw arguments are non-serializable and remain behind that boundary; the future
+orchestrator will mint internal event and approval identities before routing a
+request through policy.
+
+The adapters also encode typed outcomes for the provider's next step. Tool-only
+responses are valid, and diagnostics use the same accumulator as production.
+Bounds, failure rules, and the remaining orchestration work are documented in
+[Provider tool turns](TOOL_TURNS.md) and
+[ADR 0010](decisions/0010-transient-provider-tool-turns.md).
 
 ## Provider transports
 
