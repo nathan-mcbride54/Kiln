@@ -4,9 +4,11 @@ import test from "node:test";
 import {
   APPLICATION_CONTRACT_VERSION,
   ApplicationEventStream,
+  type ApplicationEvent,
   validateEvent,
   validateOrderedEvents,
 } from "../desktop/src/lib/events.ts";
+import { executeVisibleRepositoryTool } from "../desktop/src/lib/bridge.ts";
 import { DurableTaskHistory } from "../desktop/src/lib/history.ts";
 import { initialSessionEvents } from "../desktop/src/lib/preview-session.ts";
 import {
@@ -86,6 +88,80 @@ test("replays the complete recorded session deterministically", () => {
   assert.ok(
     outputEvent?.payload.type === "tool_output" &&
       outputEvent.payload.data.chunk.includes("\r\n"),
+  );
+});
+
+test("projects an approved workspace edit and its safe diff artifact", () => {
+  const stream = new ApplicationEventStream("task:edit", {
+    taskId: "edit",
+    clock: () => 42,
+  });
+  const events = [
+    stream.append({
+      type: "approval_requested",
+      data: {
+        approvalId: "approval:write-1",
+        action: "write_file",
+        resource: "src/lib.rs",
+        reason: "Apply one atomic edit.",
+      },
+    }),
+    stream.append({
+      type: "approval_decided",
+      data: {
+        approvalId: "approval:write-1",
+        decision: "approved",
+        scope: "once",
+      },
+    }),
+    stream.append({
+      type: "artifact_published",
+      data: {
+        artifactId: "artifact:write-1",
+        kind: "diff",
+        label: "src/lib.rs",
+      },
+    }),
+  ];
+
+  const projection = projectEvents(events);
+  assert.equal(projection.pendingApproval, undefined);
+  assert.equal(projection.artifacts[0].label, "src/lib.rs");
+  assert.ok(
+    projection.activity.some((item) => item.title === "Approval required"),
+  );
+  assert.ok(projection.activity.some((item) => item.title === "Diff ready"));
+});
+
+test("keeps full workspace diffs out of durable event batches", async () => {
+  const batches: ApplicationEvent[] = [];
+  const sensitiveContent = "Authorization: Bearer do-not-persist\n";
+
+  const result = await executeVisibleRepositoryTool(
+    "project-preview",
+    "tool-write-preview",
+    {
+      tool: "write_file",
+      input: {
+        path: "src/example.txt",
+        content: sensitiveContent,
+      },
+    },
+    async (events) => {
+      batches.push(...events);
+    },
+  );
+
+  assert.equal(result.tool, "write_file");
+  assert.match(result.result.unifiedDiff, /Authorization: Bearer/);
+  const durableJson = JSON.stringify(batches);
+  assert.doesNotMatch(durableJson, /Authorization: Bearer/);
+  assert.doesNotMatch(durableJson, /unifiedDiff/);
+  assert.ok(
+    batches.some(
+      (event) =>
+        event.type === "artifact_published" && event.data.kind === "diff",
+    ),
   );
 });
 

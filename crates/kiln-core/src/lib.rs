@@ -34,8 +34,9 @@ pub use projects::{
 pub use tools::{
     FileMatch, ReadFileRequest, ReadFileResult, RepositoryToolExecution, RepositoryToolRequest,
     RepositoryToolResult, SearchFilesRequest, SearchFilesResult, SearchTextRequest,
-    SearchTextResult, TextMatch, ToolContractError, DEFAULT_READ_LINE_COUNT,
-    DEFAULT_SEARCH_RESULTS, MAX_READ_LINE_COUNT, MAX_SEARCH_RESULTS,
+    SearchTextResult, TextMatch, ToolContractError, WriteFileRequest, WriteFileResult,
+    DEFAULT_READ_LINE_COUNT, DEFAULT_SEARCH_RESULTS, MAX_READ_LINE_COUNT, MAX_SEARCH_RESULTS,
+    MAX_WRITE_BYTES,
 };
 pub use types::{
     ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatStreamEvent, ConnectionTestRequest,

@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{ipc::Channel, State};
+use tauri::{ipc::Channel, AppHandle, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 use crate::AppState;
 use kiln_core::{
@@ -191,6 +192,7 @@ pub async fn list_remembered_projects(
 
 #[tauri::command]
 pub async fn execute_repository_tool(
+    app: AppHandle,
     state: State<'_, AppState>,
     project_id: String,
     tool_call_id: String,
@@ -208,7 +210,28 @@ pub async fn execute_repository_tool(
         None => CancellationToken::default(),
     };
     let tools = state.workspace_tools.clone();
+    let approval_path = match &request {
+        RepositoryToolRequest::WriteFile(request) => Some(request.path.clone()),
+        _ => None,
+    };
     tauri::async_runtime::spawn_blocking(move || {
+        if let Some(path) = approval_path {
+            let approved = app
+                .dialog()
+                .message(format!(
+                    "Kiln wants to replace the UTF-8 contents of:\n\n{path}\n\nReview the resulting diff before accepting the task."
+                ))
+                .title("Approve one workspace edit")
+                .buttons(MessageDialogButtons::OkCancelCustom(
+                    "Apply edit".to_owned(),
+                    "Cancel".to_owned(),
+                ))
+                .blocking_show();
+            if !approved {
+                return Err(WorkspaceToolError::ApprovalDeclined);
+            }
+            tools.approve_once(&project_id, &tool_call_id, &request)?;
+        }
         tools
             .execute(&project_id, &tool_call_id, request, &cancellation)
             .map(RepositoryToolExecution::new)
@@ -347,10 +370,10 @@ fn repository_error(error: RepositoryError) -> CommandError {
 }
 
 fn workspace_tool_error(error: WorkspaceToolError) -> CommandError {
-    let code = if matches!(error, WorkspaceToolError::Cancelled) {
-        ErrorCode::Cancelled
-    } else {
-        ErrorCode::InvalidRequest
+    let code = match error {
+        WorkspaceToolError::ApprovalDeclined => ErrorCode::PermissionDenied,
+        WorkspaceToolError::Cancelled => ErrorCode::Cancelled,
+        _ => ErrorCode::InvalidRequest,
     };
     let retryable = matches!(
         error,
@@ -400,6 +423,15 @@ mod tests {
         assert_eq!(error.code, ErrorCode::StorageFailure);
         assert!(!error.message.contains("apiKey"));
         assert!(!error.retryable);
+    }
+
+    #[test]
+    fn approval_declines_and_turn_cancellation_have_distinct_codes() {
+        let declined = workspace_tool_error(WorkspaceToolError::ApprovalDeclined);
+        let cancelled = workspace_tool_error(WorkspaceToolError::Cancelled);
+
+        assert_eq!(declined.code, ErrorCode::PermissionDenied);
+        assert_eq!(cancelled.code, ErrorCode::Cancelled);
     }
 
     #[tokio::test]

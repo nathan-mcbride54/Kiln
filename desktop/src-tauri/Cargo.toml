@@ -26,6 +26,7 @@ kiln-workspace = { path = "../../crates/kiln-workspace" }
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
 
 [dev-dependencies]
 tokio.workspace = true

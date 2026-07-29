@@ -45,6 +45,16 @@ let previewProject: ProjectSnapshot = {
   },
 };
 
+class DesktopCommandError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "DesktopCommandError";
+    this.code = code;
+  }
+}
+
 const previewCapabilities: ProviderCapabilities[] = [
   {
     provider: "openai",
@@ -92,7 +102,7 @@ export function isDesktopRuntime(): boolean {
 }
 
 function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
 async function callOrPreview<T>(
@@ -101,7 +111,9 @@ async function callOrPreview<T>(
   preview: () => Promise<T> | T,
 ): Promise<T> {
   if (!isDesktopRuntime()) {
-    await wait(520);
+    if (typeof window !== "undefined") {
+      await wait(520);
+    }
     return preview();
   }
 
@@ -120,9 +132,10 @@ async function invokeDesktop<T>(
       throw new Error(commandError);
     }
 
-    throw new Error(
+    throw new DesktopCommandError(
       commandError.message ??
         `Kiln could not complete “${command.replaceAll("_", " ")}”.`,
+      commandError.code,
     );
   }
 }
@@ -233,7 +246,8 @@ export async function executeVisibleRepositoryTool(
   consume: (events: readonly ApplicationEvent[]) => Promise<void>,
   turnId?: string,
 ): Promise<RepositoryToolResult> {
-  await consume([
+  const approvalId = `approval:${toolCallId}`;
+  const proposed: ApplicationEvent[] = [
     {
       type: "tool_proposed",
       data: {
@@ -243,32 +257,30 @@ export async function executeVisibleRepositoryTool(
       },
     },
     { type: "tool_started", data: { toolCallId } },
-  ]);
+  ];
+  if (request.tool === "write_file") {
+    proposed.unshift({
+      type: "approval_requested",
+      data: {
+        approvalId,
+        action: "write_file",
+        resource: request.input.path,
+        reason: "Apply one version-checked, atomic workspace edit.",
+      },
+    });
+  }
+  await consume(proposed);
 
+  let execution: RepositoryToolExecution;
   try {
-    const execution = await executeRepositoryTool(
+    execution = await executeRepositoryTool(
       projectId,
       toolCallId,
       request,
       turnId,
     );
-    await consume([
-      {
-        type: "tool_output",
-        data: {
-          toolCallId,
-          stream: "structured",
-          chunk: execution.activitySummary,
-        },
-      },
-      {
-        type: "tool_completed",
-        data: { toolCallId, success: true },
-      },
-    ]);
-    return execution.result;
   } catch (error) {
-    await consume([
+    const failed: ApplicationEvent[] = [
       {
         type: "tool_output",
         data: {
@@ -281,9 +293,55 @@ export async function executeVisibleRepositoryTool(
         type: "tool_completed",
         data: { toolCallId, success: false },
       },
-    ]);
+    ];
+    if (request.tool === "write_file") {
+      failed.unshift({
+        type: "approval_decided",
+        data: {
+          approvalId,
+          decision:
+            error instanceof DesktopCommandError &&
+            error.code === "permission_denied"
+              ? "denied"
+              : "approved",
+          scope: "once",
+        },
+      });
+    }
+    await consume(failed);
     throw error;
   }
+
+  const completed: ApplicationEvent[] = [
+    {
+      type: "tool_output",
+      data: {
+        toolCallId,
+        stream: "structured",
+        chunk: execution.activitySummary,
+      },
+    },
+    {
+      type: "tool_completed",
+      data: { toolCallId, success: true },
+    },
+  ];
+  if (execution.result.tool === "write_file") {
+    completed.unshift({
+      type: "approval_decided",
+      data: { approvalId, decision: "approved", scope: "once" },
+    });
+    completed.push({
+      type: "artifact_published",
+      data: {
+        artifactId: `artifact:${toolCallId}`,
+        kind: "diff",
+        label: execution.result.result.path,
+      },
+    });
+  }
+  await consume(completed);
+  return execution.result;
 }
 
 function previewRepositoryTool(
@@ -298,6 +356,7 @@ function previewRepositoryTool(
         startLine: request.input.startLine ?? 1,
         endLine: request.input.startLine ?? 1,
         truncated: false,
+        sha256: "0".repeat(64),
       },
     };
     return {
@@ -316,6 +375,27 @@ function previewRepositoryTool(
           { path: "README.md" },
         ],
         truncated: false,
+      },
+    };
+    return {
+      result,
+      activitySummary: repositoryToolPreviewSummary(result),
+    };
+  }
+  if (request.tool === "write_file") {
+    const created = request.input.expectedSha256 === undefined;
+    const result: RepositoryToolResult = {
+      tool: "write_file",
+      result: {
+        path: request.input.path,
+        created,
+        bytesWritten: new TextEncoder().encode(request.input.content).length,
+        beforeSha256: request.input.expectedSha256,
+        afterSha256: "1".repeat(64),
+        unifiedDiff:
+          `--- ${created ? "/dev/null" : `a/${request.input.path}`}\n` +
+          `+++ b/${request.input.path}\n` +
+          `@@ -1,0 +1,1 @@\n+${request.input.content}`,
       },
     };
     return {
@@ -347,6 +427,9 @@ function repositoryToolProposalSummary(
   if (request.tool === "search_files") {
     return "Search file paths inside the selected workspace";
   }
+  if (request.tool === "write_file") {
+    return `Write ${request.input.path} after native approval`;
+  }
   return "Search text inside the selected workspace";
 }
 
@@ -363,6 +446,9 @@ function repositoryToolPreviewSummary(
   if (output.tool === "search_files") {
     const count = output.result.matches.length;
     return `Found ${count} workspace file${count === 1 ? "" : "s"}`;
+  }
+  if (output.tool === "write_file") {
+    return `${output.result.created ? "Created" : "Updated"} ${output.result.path} with an atomic workspace edit`;
   }
   const count = output.result.matches.length;
   return (

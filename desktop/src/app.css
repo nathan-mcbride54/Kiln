@@ -1360,6 +1360,46 @@ kbd {
   font-size: 8px;
 }
 
+.workspace-edit-card {
+  display: grid;
+  gap: 12px;
+  margin: 0 14px 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--ember));
+}
+
+.workspace-edit-card > div:first-child,
+.workspace-edit-card label {
+  display: grid;
+  gap: 5px;
+}
+
+.workspace-edit-card span {
+  color: var(--ink-2);
+  font-size: 0.72rem;
+}
+
+.workspace-edit-card input,
+.workspace-edit-card textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 10px;
+  color: var(--ink-1);
+  background: var(--panel-raised);
+  font: inherit;
+  resize: vertical;
+}
+
+.workspace-edit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .artifact-strip {
   display: grid;
   padding: 0 12px 12px;
@@ -1521,6 +1561,25 @@ kbd {
   font-family: var(--mono);
   font-size: 7.5px;
   line-height: 1.75;
+}
+
+.real-diff {
+  max-height: 420px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: var(--ink-1);
+  background: var(--panel-raised);
+  font: 0.76rem/1.55 var(--mono);
+  white-space: pre;
+}
+
+.empty-diff {
+  margin: 0;
+  padding: 22px 16px;
+  color: var(--ink-2);
+  font-size: 0.78rem;
+  text-align: center;
 }
 
 .code-line {

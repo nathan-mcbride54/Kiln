@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -426,7 +426,7 @@ impl PermissionDecision {
 #[derive(Debug)]
 pub struct PermissionEngine {
     rules: Vec<PolicyRule>,
-    once_grants: BTreeSet<String>,
+    once_grants: BTreeMap<String, (ActionOrigin, PermissionResource)>,
 }
 
 impl PermissionEngine {
@@ -440,7 +440,7 @@ impl PermissionEngine {
         }
         Ok(Self {
             rules,
-            once_grants: BTreeSet::new(),
+            once_grants: BTreeMap::new(),
         })
     }
 
@@ -470,7 +470,13 @@ impl PermissionEngine {
             });
         }
 
-        if self.once_grants.contains(&proposal.action_id) {
+        if self
+            .once_grants
+            .get(&proposal.action_id)
+            .is_some_and(|(origin, resource)| {
+                origin == &proposal.origin && resource == &proposal.resource
+            })
+        {
             return Ok(PermissionDecision::Allow {
                 rule_id: None,
                 ephemeral: true,
@@ -500,7 +506,10 @@ impl PermissionEngine {
     ) -> Result<(), PolicyError> {
         match self.evaluate(proposal, context)? {
             PermissionDecision::Ask { .. } => {
-                self.once_grants.insert(proposal.action_id.clone());
+                self.once_grants.insert(
+                    proposal.action_id.clone(),
+                    (proposal.origin.clone(), proposal.resource.clone()),
+                );
                 Ok(())
             }
             decision => Err(PolicyError::ApprovalNotApplicable(decision)),
@@ -712,6 +721,33 @@ mod tests {
             engine.evaluate(&proposal, &context).unwrap(),
             PermissionDecision::Ask { .. }
         ));
+    }
+
+    #[test]
+    fn allow_once_is_bound_to_the_approved_resource() {
+        let mut engine = PermissionEngine::new(Vec::new()).unwrap();
+        let context = PolicyContext::default();
+        let approved = proposal(
+            "write-once",
+            PermissionResource::Path {
+                operation: PathOperation::Write,
+                path: "/workspace/src/lib.rs".to_owned(),
+            },
+        );
+        engine.approve_once(&approved, &context).unwrap();
+
+        let substituted = proposal(
+            "write-once",
+            PermissionResource::Path {
+                operation: PathOperation::Write,
+                path: "/workspace/.git/config".to_owned(),
+            },
+        );
+        assert!(matches!(
+            engine.evaluate(&substituted, &context).unwrap(),
+            PermissionDecision::Ask { .. }
+        ));
+        assert!(engine.evaluate(&approved, &context).unwrap().is_allowed());
     }
 
     #[test]

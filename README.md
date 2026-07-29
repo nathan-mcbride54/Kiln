@@ -78,7 +78,8 @@ keys and remote URLs are never part of remembered project metadata.
 - [Central permission engine](docs/PERMISSIONS.md)
 - [Provider streaming and cancellation](docs/STREAMING.md)
 - [Git projects and direct workspaces](docs/PROJECTS.md)
-- [Read-only repository tools](docs/REPOSITORY_TOOLS.md)
+- [Repository inspection tools](docs/REPOSITORY_TOOLS.md)
+- [Safe workspace editing](docs/SAFE_EDITING.md)
 - [Windows/Linux continuous integration](docs/CONTINUOUS_INTEGRATION.md)
 - [Evolving roadmap](ROADMAP.md)
 - [Local-first control-plane decision](docs/decisions/0001-local-first-control-plane.md)
@@ -87,6 +88,7 @@ keys and remote URLs are never part of remembered project metadata.
 - [Central permission-engine decision](docs/decisions/0004-central-permission-engine.md)
 - [Ordered provider-streaming decision](docs/decisions/0005-ordered-provider-streaming.md)
 - [Bounded repository-inspection decision](docs/decisions/0006-bounded-repository-inspection.md)
+- [Native-confirmed atomic-editing decision](docs/decisions/0007-native-confirmed-atomic-editing.md)
 
 The roadmap is generated from `product/roadmap.json`, which carries stable item
 IDs, dependencies, acceptance gates, risks, decisions, and change history.
@@ -133,5 +135,5 @@ cargo test --workspace --all-targets --offline
 ```
 
 Kiln is currently an alpha foundation. It executes bounded, policy-checked
-read-only repository tools, but it does not yet edit files, run general shell
-commands, or claim to sandbox an agent.
+repository reads, searches, and native-confirmed atomic UTF-8 edits. It does
+not yet run general shell commands or claim to sandbox an agent.
