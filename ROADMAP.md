@@ -5,7 +5,7 @@
 
 | Revision | Last reviewed | Current horizon | Launch platforms | Later platforms |
 |---|---|---|---|---|
-| 1.7 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
+| 1.8 | 2026-07-29 | H1 — Connected vertical slice | Windows and Linux | macOS |
 
 Kiln measures progress through complete, reliable user journeys. An item is
 done only when every acceptance criterion passes on its target platforms.
@@ -266,7 +266,7 @@ A provider can inspect, edit, and finish one real repository task through the sa
 - The Rust orchestration loop routes every proposed tool through the central permission engine and returns results to the provider in causal order.
 - One recorded read-edit-review fixture completes through all three providers, while denied and cancelled calls produce no side effect.
 
-Last reviewed 2026-07-29. Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools. Revision 1.7 implements the first slice: strict shared repository schemas, a bounded transient tool-turn codec, protocol-specific continuation encoding, diagnostic parser reuse, and cross-provider fixtures. The Rust-owned orchestration loop remains the H1 exit gate.
+Last reviewed 2026-07-29. Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools. Revision 1.7 implemented strict provider tool-turn codecs. Revision 1.8 adds the Tauri-free Rust task runner with internal causality, durable-before-action events, policy preflight, approval pauses, cancellation, bounded provider/tool budgets, transient continuations, usage aggregation, and real cross-provider repository fixtures. Live provider HTTP sessions and the desktop command remain the H1 exit gate.
 
 ### Exit gates
 
@@ -600,13 +600,13 @@ Last reviewed 2026-07-28. Not committed.
 | ID | Severity | Status | Risk | Mitigation |
 |---|---|---|---|---|
 | RISK-001 | high | mitigated | The desktop frontend is not yet proven from a clean dependency install. | Revision 1.2 proves clean hosted Windows and Ubuntu dependency installs, checks, production builds, and complete Rust workspace tests. |
-| RISK-002 | medium | mitigating | Live orchestration in the desktop interface can split causality, policy, persistence, and cancellation from Rust ownership. | Core, provider, platform, workspace, and storage contracts are Tauri-free, but the live desktop still synthesizes provider and tool lifecycle events. H1-008 must move task identity, causality, policy routing, persistence order, and cancellation into a Tauri-free Rust orchestrator before this risk can close. |
+| RISK-002 | medium | mitigating | Live orchestration in the desktop interface can split causality, policy, persistence, and cancellation from Rust ownership. | Revision 1.8 moves task identity, causality, policy routing, persistence order, approval pauses, cancellation, and the terminal receipt into kiln-orchestrator. The live desktop still uses its legacy synthesized path until provider HTTP sessions and a thin Tauri command connect to that runner, so the boundary risk remains mitigating. |
 | RISK-003 | high | mitigated | Credentials and upstream payloads may leak without OS storage and centralized redaction. | H1-006 keeps secret values in the OS vault behind opaque references and one tested redaction boundary. H1-007 additionally pins cloud destinations, binds compatible credentials to exact normalized origins, rejects insecure non-loopback credential transport, and disables redirects. |
 | RISK-004 | medium | mitigating | Provider defaults and roadmap content can drift across Rust, web, desktop, and documentation. | H0-005 generates every roadmap view from one source. H1-007 now hydrates desktop controls from Rust capability descriptors and tests pinned provider destinations; the hosted preview still maintains a separately tested contract mirror, so full cross-surface provider-contract generation remains open. |
 | RISK-005 | medium | mitigated | Windows works locally while Linux behavior remains an architectural claim. | Windows and Ubuntu quality jobs now pass on hosted runners and are both required before main can merge. |
 | RISK-006 | medium | mitigated | Concurrent writers or corrupt event order could make restart projections untruthful. | H0-008 uses one transactional SQLite writer, database uniqueness constraints, durable-tail checks, and validated ordered replay. |
 | RISK-007 | high | mitigated | Provider bytes arriving after cancellation could rewrite a terminal turn or leave background work active. | H1-001 shares cancellation across HTTP and jobs, gives cancellation race priority, stops the channel at one terminal batch, and blocks late mutations in both projectors. |
-| RISK-008 | high | open | Manual workspace tools could be mistaken for a complete provider-driven task loop, causing H1 to close without its stated user journey. | H1-008 now explicitly gates H1 on one policy-checked read-edit-review loop and a common fixture across OpenAI, Anthropic, and a local compatible provider. |
+| RISK-008 | high | mitigating | Manual workspace tools could be mistaken for a complete provider-driven task loop, causing H1 to close without its stated user journey. | Revision 1.8 proves a policy-checked real-repository read-edit-review loop through normalized OpenAI, Anthropic, and local-compatible sessions, including declined and cancelled no-side-effect cases. H1 remains open until the fixture runs through real provider HTTP sessions and the desktop command. |
 | RISK-009 | high | mitigating | Fragmented or drifting provider tool-call protocols could normalize the wrong tool, arguments, order, or continuation. | Revision 1.7 adds one bounded cross-provider codec, strict allowlisted schemas, opaque transient handles, protocol-specific continuation fixtures, and fail-closed tests for malformed, missing, duplicate, oversized, unknown, and out-of-order calls. Recorded fixtures remain required for every provider protocol change. |
 | RISK-010 | medium | open | Submodules, symlinks, sparse checkouts, Git LFS, long paths, case differences, or very large repositories could break containment, performance, or recovery assumptions. | H2-007 adds explicit cross-platform topology, scale, bounding, and recovery fixtures before daily-driver claims. |
 | RISK-011 | high | open | A signed-looking release, plugin dependency, diagnostic bundle, uninstall, or retention path could still compromise provenance, privacy, secrets, or local data. | H4-005 gates beta on a threat model, SBOM and dependency review, vulnerability reporting, telemetry defaults, secret cleanup, and verified local-data deletion. |
@@ -626,6 +626,7 @@ Last reviewed 2026-07-28. Not committed.
 | DEC-009 | accepted | Require native confirmation and optimistic version checks for atomic direct-workspace edits. | H2 worktree isolation | A frontend assertion must not grant write access, stale reads must not overwrite user work, and completed edits need durable review evidence. |
 | DEC-010 | accepted | Store provider secrets in OS credential services and transport only provider-bound opaque references. | H2 export and crash-recovery work | Normal application data and frontend provider commands must not expose durable secret values, and every output boundary needs one tested redaction contract. |
 | DEC-011 | accepted | Keep provider-native tool handles, raw arguments, and continuation payloads transient behind strict Rust codecs. | H3 external-agent protocol review | Provider protocol details and untrusted identifiers must not become IPC, approval, event, export, or persistence contracts. |
+| DEC-012 | accepted | Make one Tauri-free Rust task loop the durable owner of provider steps, approvals, workspace actions, cancellation, and terminal receipts. | H2 crash-resume review | Every side effect needs one causal owner that persists intent and approval before execution and behaves identically across desktop and future headless transports. |
 
 ## Success metrics
 
@@ -637,6 +638,7 @@ Last reviewed 2026-07-28. Not committed.
 - Completed tasks with verification evidence.
 - Provider normalization errors per 1,000 events.
 - Tool-call codec rejections by provider and stable reason.
+- Provider task-loop receipts, steps, and repository calls by outcome.
 - Repository topology and scale fixture coverage.
 - User-restored changes per completed task.
 - Installer and update success by platform.
@@ -656,6 +658,16 @@ Last reviewed 2026-07-28. Not committed.
 - Progress is measured by completed user journeys and reliability gates, not feature count.
 
 ## Change history
+
+### 2026-07-29 — revision 1.8
+
+Moved the provider repository-task lifecycle into a durable Tauri-free Rust runner.
+
+- Added kiln-orchestrator with a bounded provider-session and approval-gate contract, internally minted identities, SQLite-first causal events, aggregated usage, and one terminal receipt.
+- Added workspace policy preflight so approval requests are known and persisted before any side-effecting call, while execution still rechecks the central permission engine.
+- Added real temporary-repository read-edit-review fixtures for OpenAI Responses, Anthropic Messages, and compatible Chat Completions, plus declined and cancelled no-side-effect cases.
+- Kept provider handles, raw arguments, file contents, search data, and full diffs out of durable events and added debug-redaction coverage for transient continuations.
+- Updated the desktop projector so a terminal receipt clears an interrupted pending approval, advanced RISK-008 to mitigating, and accepted DEC-012 for durable Rust task ownership.
 
 ### 2026-07-29 — revision 1.7
 

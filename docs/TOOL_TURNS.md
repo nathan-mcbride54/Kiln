@@ -1,6 +1,6 @@
 # Provider tool turns
 
-**Status:** H1-008 codec foundation implemented; orchestration loop pending
+**Status:** H1-008 codec and core orchestration implemented; live integration pending
 **Canonical repository schemas:** `kiln-core::repository_tool_definitions`
 **Transient provider boundary:** `kiln-providers::ToolTurnCodec`
 
@@ -12,9 +12,9 @@ provider protocol to become the application event contract. The tool-turn
 codec is the narrow boundary between untrusted provider bytes and Kiln's
 typed repository requests.
 
-The codec does not execute tools. It emits transient tool calls that must be
-parsed into the four allowlisted `RepositoryToolRequest` variants and routed
-through the workspace permission boundary by the H1-008 orchestrator.
+The codec does not execute tools. It emits transient tool calls that are parsed
+into the four allowlisted `RepositoryToolRequest` variants and routed through
+the workspace permission boundary by `kiln-orchestrator`.
 
 ## Stable repository catalog
 
@@ -52,9 +52,9 @@ redacts the handle and reports only argument size. They cannot enter Tauri IPC,
 SQLite events, crash reports, or exports through the typed application
 contract.
 
-The future orchestrator retains the opaque handle only long enough to encode a
-typed success or failure for the next provider step. It mints its own internal
-tool and approval IDs for durable causality.
+The orchestrator retains the opaque handle only long enough to return a typed
+success or failure for the next provider step. It mints its own internal tool
+and approval IDs for durable causality.
 
 ## Continuations
 
@@ -82,10 +82,20 @@ Provider diagnostics now use the same tool-call accumulator as production
 decoding. A diagnostic pass therefore proves the selected model can satisfy
 the shared stream grammar, while still executing no repository action.
 
+## Rust-owned task loop
+
+`kiln-orchestrator` now owns task identity, causality, persistence order,
+policy preflight, approval pauses, cancellation, budgets, workspace execution,
+transient provider continuations, usage aggregation, and the single terminal
+receipt. Its recorded fixtures run real read-edit-review work across all three
+provider protocols and prove denied and cancelled writes have no side effect.
+
+See [Rust task orchestration](ORCHESTRATION.md) and
+[ADR 0011](decisions/0011-durable-rust-task-loop.md).
+
 ## Remaining H1-008 work
 
-The next slice is a Tauri-free Rust orchestrator that owns task identity,
-causality, persistence order, policy evaluation, approvals, cancellation,
-budgets, workspace execution, provider continuation, usage aggregation, and
-the single terminal receipt. Svelte will project persisted events instead of
+The next slice implements real provider HTTP sessions on the orchestrator
+trait, resolves credentials at the trusted boundary, exposes a thin Tauri
+command, and changes Svelte to project the persisted stream instead of
 synthesizing live tool lifecycle events.

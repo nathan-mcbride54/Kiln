@@ -56,10 +56,14 @@ filesystem operation around this boundary.
 
 ## Visibility and data retention
 
-The desktop persists `tool_proposed` and `tool_started` before it invokes the
-Rust command. It then persists a bounded `tool_output` summary and
-`tool_completed` result in order. These events project into the Activity panel,
-including failures.
+The H1-008 Rust orchestrator persists `tool_proposed`, any approval transition,
+and `tool_started` before it invokes the workspace service. It then persists a
+bounded `tool_output` summary and `tool_completed` result in order. These
+events project into the Activity panel, including failures. Write results also
+publish diff metadata while the full diff stays transient.
+
+The live desktop manual-tool path still assembles equivalent events in Svelte
+until the real provider task command is connected.
 
 Raw file contents, text-search queries, and matching previews remain transient
 typed tool results. They are not copied into the immutable application event

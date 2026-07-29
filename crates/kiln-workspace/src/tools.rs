@@ -29,6 +29,19 @@ const MAX_SEARCH_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_PREVIEW_CHARS: usize = 400;
 static TEMP_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceToolAuthorization {
+    Allowed,
+    ApprovalRequired {
+        action: String,
+        resource: String,
+        reason: String,
+    },
+    Denied {
+        reason: String,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkspaceToolHost {
     project_id: String,
@@ -126,6 +139,82 @@ impl WorkspaceToolHost {
             reason: "Writing inside the selected workspace requires approval.".to_owned(),
         });
         PermissionEngine::new(rules).map_err(WorkspaceToolError::Policy)
+    }
+
+    pub fn authorization(
+        &self,
+        permissions: &PermissionEngine,
+        tool_call_id: &str,
+        request: &RepositoryToolRequest,
+    ) -> Result<WorkspaceToolAuthorization, WorkspaceToolError> {
+        if tool_call_id.trim().is_empty() {
+            return Err(WorkspaceToolError::InvalidToolCall);
+        }
+        request.validate()?;
+        let context = PolicyContext {
+            project_id: Some(self.project_id.clone()),
+            ..PolicyContext::default()
+        };
+        let tool = ActionProposal::new(
+            format!("{tool_call_id}:tool"),
+            ActionOrigin::Core,
+            PermissionResource::Tool {
+                name: request.name().to_owned(),
+            },
+            "Use a typed tool inside the selected repository.",
+        )?;
+        let (operation, target) = match request {
+            RepositoryToolRequest::ReadFile(request) => {
+                (PathOperation::Read, self.resolve_existing(&request.path)?)
+            }
+            RepositoryToolRequest::SearchFiles(_) => (PathOperation::Search, self.root.clone()),
+            RepositoryToolRequest::SearchText(request) => (
+                PathOperation::Search,
+                match request.path.as_deref() {
+                    Some(path) => self.resolve_existing(path)?,
+                    None => self.root.clone(),
+                },
+            ),
+            RepositoryToolRequest::WriteFile(request) => (
+                PathOperation::Write,
+                self.resolve_write_target(&request.path)?,
+            ),
+        };
+        let resource = target
+            .to_str()
+            .ok_or(WorkspaceToolError::NonUnicodePath)?
+            .to_owned();
+        let path = ActionProposal::new(
+            format!("{tool_call_id}:path"),
+            ActionOrigin::Core,
+            PermissionResource::Path {
+                operation,
+                path: resource.clone(),
+            },
+            "Access a path inside the selected repository.",
+        )?;
+        let decisions = [
+            permissions.evaluate(&tool, &context)?,
+            permissions.evaluate(&path, &context)?,
+        ];
+
+        for decision in &decisions {
+            if let PermissionDecision::Deny { reason, .. } = decision {
+                return Ok(WorkspaceToolAuthorization::Denied {
+                    reason: reason.clone(),
+                });
+            }
+        }
+        for decision in decisions {
+            if let PermissionDecision::Ask { reason, .. } = decision {
+                return Ok(WorkspaceToolAuthorization::ApprovalRequired {
+                    action: request.name().to_owned(),
+                    resource,
+                    reason,
+                });
+            }
+        }
+        Ok(WorkspaceToolAuthorization::Allowed)
     }
 
     pub fn execute(
@@ -241,8 +330,19 @@ impl WorkspaceToolHost {
             },
             "Write one approved path inside the selected repository.",
         )?;
-        permissions.approve_once(&tool, context)?;
-        permissions.approve_once(&path_proposal, context)?;
+        for proposal in [&tool, &path_proposal] {
+            match permissions.evaluate(proposal, context)? {
+                PermissionDecision::Ask { .. } => {
+                    permissions.approve_once(proposal, context)?;
+                }
+                PermissionDecision::Allow { .. } => {}
+                decision @ PermissionDecision::Deny { .. } => {
+                    return Err(WorkspaceToolError::NotAuthorized(
+                        GuardedExecutionError::NotAuthorized(decision),
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -692,6 +792,27 @@ impl WorkspaceToolService {
             .map_err(|_| WorkspaceToolError::Unavailable)?;
         let RegisteredWorkspace { host, permissions } = &mut *workspace;
         host.execute(permissions, tool_call_id, request, cancellation)
+    }
+
+    pub fn authorization(
+        &self,
+        project_id: &str,
+        tool_call_id: &str,
+        request: &RepositoryToolRequest,
+    ) -> Result<WorkspaceToolAuthorization, WorkspaceToolError> {
+        let workspace = self
+            .workspaces
+            .lock()
+            .map_err(|_| WorkspaceToolError::Unavailable)?
+            .get(project_id)
+            .cloned()
+            .ok_or(WorkspaceToolError::WorkspaceNotRegistered)?;
+        let workspace = workspace
+            .lock()
+            .map_err(|_| WorkspaceToolError::Unavailable)?;
+        workspace
+            .host
+            .authorization(&workspace.permissions, tool_call_id, request)
     }
 
     pub fn approve_once(
@@ -1272,15 +1393,21 @@ mod tests {
             reason: "test denial".to_owned(),
         }])
         .unwrap();
+        let request = RepositoryToolRequest::ReadFile(ReadFileRequest {
+            path: "src/lib.rs".to_owned(),
+            start_line: None,
+            line_count: None,
+        });
+        assert!(matches!(
+            host.authorization(&permissions, "tool-denied", &request)
+                .unwrap(),
+            WorkspaceToolAuthorization::Denied { reason } if reason == "test denial"
+        ));
         let error = host
             .execute(
                 &mut permissions,
                 "tool-denied",
-                RepositoryToolRequest::ReadFile(ReadFileRequest {
-                    path: "src/lib.rs".to_owned(),
-                    start_line: None,
-                    line_count: None,
-                }),
+                request,
                 &CancellationToken::default(),
             )
             .unwrap_err();
@@ -1341,16 +1468,23 @@ mod tests {
         let path = root.join("src/lib.rs");
         let before = fs::read_to_string(&path).unwrap();
         let expected = sha256_hex(before.as_bytes());
+        let write_request = RepositoryToolRequest::WriteFile(WriteFileRequest {
+            path: "src/lib.rs".to_owned(),
+            content: "pub fn kiln() { println!(\"changed\"); }\n".to_owned(),
+            expected_sha256: Some(expected.clone()),
+        });
+        assert!(matches!(
+            host.authorization(&permissions, "tool-write-proposed", &write_request)
+                .unwrap(),
+            WorkspaceToolAuthorization::ApprovalRequired { action, .. }
+                if action == "write_file"
+        ));
 
         let denied = host
             .execute(
                 &mut permissions,
                 "tool-write-denied",
-                RepositoryToolRequest::WriteFile(WriteFileRequest {
-                    path: "src/lib.rs".to_owned(),
-                    content: "pub fn kiln() { println!(\"changed\"); }\n".to_owned(),
-                    expected_sha256: Some(expected.clone()),
-                }),
+                write_request,
                 &CancellationToken::default(),
             )
             .unwrap_err();

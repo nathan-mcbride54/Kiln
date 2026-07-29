@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/kiln-core",
+  "crates/kiln-orchestrator",
   "crates/kiln-platform",
   "crates/kiln-providers",
   "crates/kiln-storage",

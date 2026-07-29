@@ -1,0 +1,21 @@
+[package]
+name = "kiln-orchestrator"
+description = "Transport-independent provider task orchestration for Kiln"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+kiln-core = { path = "../kiln-core" }
+kiln-platform = { path = "../kiln-platform" }
+kiln-providers = { path = "../kiln-providers" }
+kiln-storage = { path = "../kiln-storage" }
+kiln-workspace = { path = "../kiln-workspace" }
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

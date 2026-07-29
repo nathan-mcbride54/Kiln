@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "product": "Kiln",
-  "revision": "1.7",
+  "revision": "1.8",
   "lastReviewed": "2026-07-29",
   "currentHorizon": "H1",
   "releaseTargets": ["Windows", "Linux"],
@@ -354,7 +354,7 @@
             "One recorded read-edit-review fixture completes through all three providers, while denied and cancelled calls produce no side effect."
           ],
           "lastReviewed": "2026-07-29",
-          "changeNote": "Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools. Revision 1.7 implements the first slice: strict shared repository schemas, a bounded transient tool-turn codec, protocol-specific continuation encoding, diagnostic parser reuse, and cross-provider fixtures. The Rust-owned orchestration loop remains the H1 exit gate."
+          "changeNote": "Added in revision 1.5 after the progress review found that H1's provider-driven exit gate had no implementation item beyond manually invoked workspace tools. Revision 1.7 implemented strict provider tool-turn codecs. Revision 1.8 adds the Tauri-free Rust task runner with internal causality, durable-before-action events, policy preflight, approval pauses, cancellation, bounded provider/tool budgets, transient continuations, usage aggregation, and real cross-provider repository fixtures. Live provider HTTP sessions and the desktop command remain the H1 exit gate."
         }
       ]
     },
@@ -736,7 +736,7 @@
       "severity": "medium",
       "status": "mitigating",
       "risk": "Live orchestration in the desktop interface can split causality, policy, persistence, and cancellation from Rust ownership.",
-      "mitigation": "Core, provider, platform, workspace, and storage contracts are Tauri-free, but the live desktop still synthesizes provider and tool lifecycle events. H1-008 must move task identity, causality, policy routing, persistence order, and cancellation into a Tauri-free Rust orchestrator before this risk can close."
+      "mitigation": "Revision 1.8 moves task identity, causality, policy routing, persistence order, approval pauses, cancellation, and the terminal receipt into kiln-orchestrator. The live desktop still uses its legacy synthesized path until provider HTTP sessions and a thin Tauri command connect to that runner, so the boundary risk remains mitigating."
     },
     {
       "id": "RISK-003",
@@ -776,9 +776,9 @@
     {
       "id": "RISK-008",
       "severity": "high",
-      "status": "open",
+      "status": "mitigating",
       "risk": "Manual workspace tools could be mistaken for a complete provider-driven task loop, causing H1 to close without its stated user journey.",
-      "mitigation": "H1-008 now explicitly gates H1 on one policy-checked read-edit-review loop and a common fixture across OpenAI, Anthropic, and a local compatible provider."
+      "mitigation": "Revision 1.8 proves a policy-checked real-repository read-edit-review loop through normalized OpenAI, Anthropic, and local-compatible sessions, including declined and cancelled no-side-effect cases. H1 remains open until the fixture runs through real provider HTTP sessions and the desktop command."
     },
     {
       "id": "RISK-009",
@@ -879,6 +879,13 @@
       "decision": "Keep provider-native tool handles, raw arguments, and continuation payloads transient behind strict Rust codecs.",
       "reviewAt": "H3 external-agent protocol review",
       "reason": "Provider protocol details and untrusted identifiers must not become IPC, approval, event, export, or persistence contracts."
+    },
+    {
+      "id": "DEC-012",
+      "status": "accepted",
+      "decision": "Make one Tauri-free Rust task loop the durable owner of provider steps, approvals, workspace actions, cancellation, and terminal receipts.",
+      "reviewAt": "H2 crash-resume review",
+      "reason": "Every side effect needs one causal owner that persists intent and approval before execution and behaves identically across desktop and future headless transports."
     }
   ],
   "metrics": [
@@ -890,11 +897,24 @@
     "Completed tasks with verification evidence",
     "Provider normalization errors per 1,000 events",
     "Tool-call codec rejections by provider and stable reason",
+    "Provider task-loop receipts, steps, and repository calls by outcome",
     "Repository topology and scale fixture coverage",
     "User-restored changes per completed task",
     "Installer and update success by platform"
   ],
   "changeLog": [
+    {
+      "date": "2026-07-29",
+      "revision": "1.8",
+      "summary": "Moved the provider repository-task lifecycle into a durable Tauri-free Rust runner.",
+      "changes": [
+        "Added kiln-orchestrator with a bounded provider-session and approval-gate contract, internally minted identities, SQLite-first causal events, aggregated usage, and one terminal receipt.",
+        "Added workspace policy preflight so approval requests are known and persisted before any side-effecting call, while execution still rechecks the central permission engine.",
+        "Added real temporary-repository read-edit-review fixtures for OpenAI Responses, Anthropic Messages, and compatible Chat Completions, plus declined and cancelled no-side-effect cases.",
+        "Kept provider handles, raw arguments, file contents, search data, and full diffs out of durable events and added debug-redaction coverage for transient continuations.",
+        "Updated the desktop projector so a terminal receipt clears an interrupted pending approval, advanced RISK-008 to mitigating, and accepted DEC-012 for durable Rust task ownership."
+      ]
+    },
     {
       "date": "2026-07-29",
       "revision": "1.7",

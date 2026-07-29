@@ -12,7 +12,7 @@ export interface RoadmapPhase {
   outcomes: readonly string[];
 }
 
-export const roadmapRevision = "1.7";
+export const roadmapRevision = "1.8";
 export const roadmapLastReviewed = "2026-07-29";
 export const roadmapCurrentHorizon = "H1";
 export const roadmap: readonly RoadmapPhase[] = [

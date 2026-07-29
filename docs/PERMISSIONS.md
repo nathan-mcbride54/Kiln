@@ -6,10 +6,16 @@
 
 ## Trust boundary
 
-All future provider, filesystem, process, network, and extension actions must
-enter the same Rust permission engine before their side-effecting operation is
+All provider, filesystem, process, network, and extension actions must enter
+the same Rust permission engine before their side-effecting operation is
 constructed. The Svelte interface displays decisions and submits approvals; it
 does not authorize work.
+
+`kiln-orchestrator` now preflights provider repository calls through
+`WorkspaceToolService`, appends any approval request before waiting, records
+the decision, grants only the exact ephemeral action/path pair, and rechecks
+policy during execution. The live desktop command still uses the earlier
+native-confirmation path until the provider session adapter is connected.
 
 Extensions are out-of-process and cannot submit a trusted origin value
 directly. Their adapter creates an `ActionOrigin::Extension` proposal, and the

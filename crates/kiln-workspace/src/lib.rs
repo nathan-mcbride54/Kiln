@@ -20,7 +20,9 @@ use kiln_platform::CancellationToken;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-pub use tools::{WorkspaceToolError, WorkspaceToolHost, WorkspaceToolService};
+pub use tools::{
+    WorkspaceToolAuthorization, WorkspaceToolError, WorkspaceToolHost, WorkspaceToolService,
+};
 
 #[derive(Debug, Clone)]
 pub struct GitRepositoryInspector {

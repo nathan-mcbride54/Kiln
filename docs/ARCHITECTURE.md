@@ -37,16 +37,19 @@ kiln-core       normalized commands, events, errors, and domain types
   │          │              └─ kiln-workspace  safe Git discovery, inspection, and atomic editing
   │          └─ kiln-storage  SQLite event log and replay
   └─ kiln-providers  OpenAI, Anthropic, and local HTTP adapters
+               ↑             ↑              ↑
+               └──── kiln-orchestrator ─────┘
+                    durable provider task loop
 
 kiln-platform   clock, paths, cancellation, and OS credential storage
        ↖       ↗
       kiln-tauri  desktop transport and application startup only
 ```
 
-`kiln-core`, `kiln-providers`, `kiln-platform`, and `kiln-workspace` compile and
-test without Tauri. The desktop crate injects provider, storage, and repository
-services into Tauri state and exposes thin commands; it contains no provider
-parsing or Git discovery rules.
+`kiln-core`, `kiln-providers`, `kiln-platform`, `kiln-storage`,
+`kiln-workspace`, and `kiln-orchestrator` compile and test without Tauri. The
+desktop crate injects services into Tauri state and exposes thin commands; it
+contains no provider parsing or Git discovery rules.
 
 ## Boundary rules
 
@@ -119,15 +122,18 @@ application's state model.
 `kiln-core` defines the strict repository-tool catalog and typed outcomes.
 `kiln-providers` converts fragmented OpenAI, Anthropic, and compatible tool
 streams into transient `ProviderToolCall` values. Provider-native handles and
-raw arguments are non-serializable and remain behind that boundary; the future
-orchestrator will mint internal event and approval identities before routing a
-request through policy.
+raw arguments are non-serializable and remain behind that boundary.
+`kiln-orchestrator` mints internal event, tool, and approval identities before
+routing a request through policy.
 
 The adapters also encode typed outcomes for the provider's next step. Tool-only
 responses are valid, and diagnostics use the same accumulator as production.
-Bounds, failure rules, and the remaining orchestration work are documented in
+The orchestrator appends each proposal and approval transition before invoking
+the workspace host, returns transient results in provider order, and owns the
+single terminal receipt. Bounds, failure rules, and the remaining live
+integration work are documented in
 [Provider tool turns](TOOL_TURNS.md) and
-[ADR 0010](decisions/0010-transient-provider-tool-turns.md).
+[Rust task orchestration](ORCHESTRATION.md).
 
 ## Provider transports
 

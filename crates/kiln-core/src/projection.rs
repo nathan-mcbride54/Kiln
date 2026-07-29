@@ -359,6 +359,7 @@ impl TaskProjection {
                 summary,
             } => {
                 self.active_turn_id = None;
+                self.pending_approval = None;
                 self.status = match outcome {
                     ReceiptOutcome::Completed => TaskStatus::Completed,
                     ReceiptOutcome::Cancelled => TaskStatus::Cancelled,

@@ -25,6 +25,12 @@ The Tauri shell opens the database in the operating system's application-data
 directory. The Svelte client loads its task stream at startup and persists each
 new batch before updating the visible projection.
 
+The H1 task-loop core writes provider messages, tool transitions, approval
+decisions, artifacts, and the terminal receipt directly through
+`SqliteEventStore` before allowing the next side effect. The current live
+desktop chat path retains the Svelte-coordinated writer until the provider
+session and Tauri command are connected to that runner.
+
 ## Database location
 
 The desktop application will resolve the production path through
@@ -133,10 +139,13 @@ On startup:
 Corrupt, gapped, cross-stream, or unsupported events fail before a partial
 projection is shown.
 
-For new activity, Svelte builds and validates the candidate event batch, asks
-Tauri to commit it, and only then replaces the visible projection. A failed
-write restores the in-memory sequencer to the durable tail so retrying cannot
-create a sequence gap.
+For activity on the current chat-only desktop path, Svelte builds and validates
+the candidate event batch, asks Tauri to commit it, and only then replaces the
+visible projection. A failed write restores the in-memory sequencer to the
+durable tail so retrying cannot create a sequence gap. The Rust task-loop core
+instead owns its event sequence and appends each transition before continuing
+provider, approval, or repository work; a failed append ends the loop without a
+false receipt.
 
 ## Validation
 

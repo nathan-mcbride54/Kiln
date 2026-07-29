@@ -128,6 +128,21 @@ impl RepositoryToolRequest {
         }
     }
 
+    /// Safe, bounded text for a durable tool proposal. Search terms and
+    /// replacement content deliberately remain transient provider context.
+    pub fn proposal_summary(&self) -> String {
+        match self {
+            Self::ReadFile(request) => {
+                format!("Read {} inside the selected workspace.", request.path)
+            }
+            Self::SearchFiles(_) => "Search file paths inside the selected workspace.".to_owned(),
+            Self::SearchText(_) => "Search text inside the selected workspace.".to_owned(),
+            Self::WriteFile(request) => {
+                format!("Write {} after explicit approval.", request.path)
+            }
+        }
+    }
+
     pub fn from_provider_call(name: &str, arguments: &str) -> Result<Self, ToolContractError> {
         if arguments.len() > MAX_TOOL_ARGUMENT_BYTES {
             return Err(ToolContractError::InvalidField {
@@ -639,5 +654,24 @@ mod tests {
         let value = serde_json::to_value(execution).unwrap();
         assert_eq!(value["activitySummary"], summary);
         assert_eq!(value["result"]["result"]["query"], "secret-token");
+
+        let search = RepositoryToolRequest::SearchText(SearchTextRequest {
+            query: "private needle".to_owned(),
+            path: None,
+            case_sensitive: false,
+            max_results: None,
+        });
+        assert!(!search.proposal_summary().contains("private needle"));
+
+        let write = RepositoryToolRequest::WriteFile(WriteFileRequest {
+            path: "src/lib.rs".to_owned(),
+            content: "private replacement".to_owned(),
+            expected_sha256: None,
+        });
+        assert_eq!(
+            write.proposal_summary(),
+            "Write src/lib.rs after explicit approval."
+        );
+        assert!(!write.proposal_summary().contains("private replacement"));
     }
 }

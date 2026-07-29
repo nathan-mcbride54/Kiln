@@ -82,6 +82,8 @@ keys and remote URLs are never part of remembered project metadata.
 - [Credential storage and redaction](docs/CREDENTIALS.md)
 - [Provider diagnostics](docs/PROVIDER_DIAGNOSTICS.md)
 - [Provider tool turns](docs/TOOL_TURNS.md)
+- [Rust task orchestration](docs/ORCHESTRATION.md)
+- [Rust task orchestration](docs/ORCHESTRATION.md)
 - [Git projects and direct workspaces](docs/PROJECTS.md)
 - [Repository inspection tools](docs/REPOSITORY_TOOLS.md)
 - [Safe workspace editing](docs/SAFE_EDITING.md)
@@ -97,6 +99,8 @@ keys and remote URLs are never part of remembered project metadata.
 - [OS credential and redaction decision](docs/decisions/0008-os-credential-references-and-central-redaction.md)
 - [Origin-bound provider-profile decision](docs/decisions/0009-origin-bound-provider-profiles.md)
 - [Transient provider-tool-turn decision](docs/decisions/0010-transient-provider-tool-turns.md)
+- [Durable Rust task-loop decision](docs/decisions/0011-durable-rust-task-loop.md)
+- [Durable Rust task-loop decision](docs/decisions/0011-durable-rust-task-loop.md)
 
 The roadmap is generated from `product/roadmap.json`, which carries stable item
 IDs, dependencies, acceptance gates, risks, decisions, and change history.
